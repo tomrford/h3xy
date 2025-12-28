@@ -6,7 +6,11 @@ pub enum ParseError {
     InvalidRecord { line: usize, message: String },
 
     #[error("checksum mismatch at line {line}: expected {expected:02X}, got {actual:02X}")]
-    ChecksumMismatch { line: usize, expected: u8, actual: u8 },
+    ChecksumMismatch {
+        line: usize,
+        expected: u8,
+        actual: u8,
+    },
 
     #[error("unexpected end of file")]
     UnexpectedEof,

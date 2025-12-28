@@ -6,7 +6,10 @@ pub struct Segment {
 
 impl Segment {
     pub fn new(start_address: u32, data: Vec<u8>) -> Self {
-        Self { start_address, data }
+        Self {
+            start_address,
+            data,
+        }
     }
 
     pub fn end_address(&self) -> u32 {

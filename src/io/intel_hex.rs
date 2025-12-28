@@ -161,14 +161,15 @@ pub fn parse_intel_hex(input: &[u8]) -> Result<HexFile, ParseError> {
 }
 
 pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec<u8> {
+    let normalized = hexfile.normalized_lossy();
     let mut output = Vec::new();
     let bytes_per_line = options.bytes_per_line.max(1) as usize;
 
     let mode = match options.mode {
         IntelHexMode::Auto => {
-            if hexfile.max_address().unwrap_or(0) > 0xFFFFF {
+            if normalized.max_address().unwrap_or(0) > 0xFFFFF {
                 IntelHexMode::ExtendedLinear
-            } else if hexfile.max_address().unwrap_or(0) > 0xFFFF {
+            } else if normalized.max_address().unwrap_or(0) > 0xFFFF {
                 IntelHexMode::ExtendedSegment
             } else {
                 IntelHexMode::ExtendedLinear
@@ -179,7 +180,7 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
 
     let mut current_extended: Option<u16> = None;
 
-    for segment in hexfile.segments() {
+    for segment in normalized.segments() {
         let mut addr = segment.start_address;
         let mut data_offset = 0;
 
@@ -197,12 +198,7 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
                     IntelHexMode::ExtendedSegment => RECORD_EXTENDED_SEGMENT,
                     IntelHexMode::Auto => unreachable!(),
                 };
-                write_record(
-                    &mut output,
-                    record_type,
-                    0,
-                    &needed_extended.to_be_bytes(),
-                );
+                write_record(&mut output, record_type, 0, &needed_extended.to_be_bytes());
             }
 
             let offset_addr = match mode {
@@ -284,7 +280,10 @@ fn hex_digit(c: char, line_num: usize) -> Result<u8, ParseError> {
         '0'..='9' => Ok(c as u8 - b'0'),
         'A'..='F' => Ok(c as u8 - b'A' + 10),
         'a'..='f' => Ok(c as u8 - b'a' + 10),
-        _ => Err(ParseError::InvalidHexDigit { line: line_num, char: c }),
+        _ => Err(ParseError::InvalidHexDigit {
+            line: line_num,
+            char: c,
+        }),
     }
 }
 
