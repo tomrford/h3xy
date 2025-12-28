@@ -6,6 +6,10 @@ pub struct Segment {
 
 impl Segment {
     pub fn new(start_address: u32, data: Vec<u8>) -> Self {
+        debug_assert!(
+            data.len() <= u32::MAX as usize,
+            "segment data exceeds u32::MAX bytes"
+        );
         Self {
             start_address,
             data,

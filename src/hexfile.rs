@@ -36,8 +36,16 @@ impl HexFile {
         &self.segments
     }
 
+    pub fn segments_mut(&mut self) -> &mut Vec<Segment> {
+        &mut self.segments
+    }
+
     pub fn into_segments(self) -> Vec<Segment> {
         self.segments
+    }
+
+    pub fn set_segments(&mut self, segments: Vec<Segment>) {
+        self.segments = segments;
     }
 
     pub fn add_segment(&mut self, segment: Segment) {
@@ -97,6 +105,7 @@ impl HexFile {
     }
 
     /// Returns sorted/merged copy. Later-inserted segments overwrite earlier ones on overlap.
+    /// Bytes that would overflow u32 address space are silently dropped.
     pub fn normalized_lossy(&self) -> HexFile {
         if self.segments.is_empty() {
             return HexFile::new();
@@ -108,7 +117,9 @@ impl HexFile {
 
         for seg in &self.segments {
             for (offset, &byte) in seg.data.iter().enumerate() {
-                let addr = seg.start_address + offset as u32;
+                let Some(addr) = seg.start_address.checked_add(offset as u32) else {
+                    break;
+                };
                 byte_map.insert(addr, byte);
             }
         }
