@@ -110,6 +110,7 @@ pub struct MergeParam {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct RemapParams {
     pub start: u32,
     pub end: u32,
@@ -119,6 +120,7 @@ pub struct RemapParams {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ChecksumParams {
     pub algorithm: u8,
     pub target: ChecksumTarget,
@@ -127,18 +129,21 @@ pub struct ChecksumParams {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum ChecksumTarget {
     Address(u32),
     File(PathBuf),
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DataProcessingParams {
     pub method: u8,
     pub param: String,
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DspicOp {
     pub range: Range,
     pub target: Option<u32>,
@@ -146,29 +151,46 @@ pub struct DspicOp {
 
 #[derive(Debug, Clone)]
 pub enum OutputFormat {
-    IntelHex { record_type: Option<u8> }, // /XI[:len[:type]]
-    SRecord { record_type: Option<u8> },  // /XS[:len[:type]]
-    Binary,                               // /XN
-    HexAscii { len: Option<u8>, sep: Option<char> }, // /XA
-    CCode,                                // /XC
-    FordIntelHex,                         // /XF
-    GmHeader { addr: Option<u32> },       // /XG
-    GmHeaderOs { addr: Option<u32> },     // /XGC
-    GmHeaderCal { addr: Option<u32> },    // /XGCC
-    Gac,                                  // /XGAC
-    GacSwil,                              // /XGACSWIL
-    FlashKernel,                          // /XK
-    Porsche,                              // /XP
-    SeparateBinary,                       // /XSB
-    Vag,                                  // /XV
-    Vbf,                                  // /XVBF
-    FiatBin,                              // /XB
+    IntelHex {
+        record_type: Option<u8>,
+    }, // /XI[:len[:type]]
+    #[allow(dead_code)]
+    SRecord {
+        record_type: Option<u8>,
+    }, // /XS[:len[:type]]
+    Binary, // /XN
+    #[allow(dead_code)]
+    HexAscii {
+        len: Option<u8>,
+        sep: Option<char>,
+    }, // /XA
+    CCode,  // /XC
+    FordIntelHex, // /XF
+    #[allow(dead_code)]
+    GmHeader {
+        addr: Option<u32>,
+    }, // /XG
+    #[allow(dead_code)]
+    GmHeaderOs {
+        addr: Option<u32>,
+    }, // /XGC
+    #[allow(dead_code)]
+    GmHeaderCal {
+        addr: Option<u32>,
+    }, // /XGCC
+    Gac,    // /XGAC
+    GacSwil, // /XGACSWIL
+    FlashKernel, // /XK
+    Porsche, // /XP
+    SeparateBinary, // /XSB
+    Vag,    // /XV
+    Vbf,    // /XVBF
+    FiatBin, // /XB
 }
 
 #[derive(Debug)]
 pub enum ParseArgError {
     MissingInputFile,
-    MissingOutputFile,
     InvalidOption(String),
     InvalidRange(String),
     InvalidNumber(String),
@@ -180,7 +202,6 @@ impl std::fmt::Display for ParseArgError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MissingInputFile => write!(f, "missing input file"),
-            Self::MissingOutputFile => write!(f, "missing output file (-o)"),
             Self::InvalidOption(s) => write!(f, "invalid option: {s}"),
             Self::InvalidRange(s) => write!(f, "invalid range: {s}"),
             Self::InvalidNumber(s) => write!(f, "invalid number: {s}"),
@@ -198,9 +219,11 @@ impl Args {
     }
 
     pub fn parse_from(args: Vec<String>) -> Result<Self, ParseArgError> {
-        let mut result = Args::default();
-        result.fill_pattern = vec![0xFF];
-        result.align_fill = 0xFF;
+        let mut result = Args {
+            fill_pattern: vec![0xFF],
+            align_fill: 0xFF,
+            ..Default::default()
+        };
 
         let mut args_iter = args.iter().peekable();
 
@@ -923,8 +946,8 @@ fn parse_checksum(
             .map_err(|_| ParseArgError::InvalidNumber(algo.to_string()))?
     };
 
-    let target = if target.starts_with('@') {
-        let addr = parse_number(&target[1..])?;
+    let target = if let Some(stripped) = target.strip_prefix('@') {
+        let addr = parse_number(stripped)?;
         ChecksumTarget::Address(addr)
     } else {
         ChecksumTarget::File(PathBuf::from(target))
