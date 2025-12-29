@@ -24,7 +24,9 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use h3xy::{FillOptions, HexFile, MergeMode, MergeOptions, Range};
+use h3xy::{
+    ChecksumAlgorithm, ChecksumOptions, FillOptions, HexFile, MergeMode, MergeOptions, Range,
+};
 
 #[derive(Debug, Default)]
 pub struct Args {
@@ -120,7 +122,6 @@ pub struct RemapParams {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ChecksumParams {
     pub algorithm: u8,
     pub target: ChecksumTarget,
@@ -129,9 +130,11 @@ pub struct ChecksumParams {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum ChecksumTarget {
     Address(u32),
+    Append,
+    Prepend,
+    OverwriteEnd,
     File(PathBuf),
 }
 
@@ -284,9 +287,6 @@ impl Args {
         if !self.dspic_clear_ghost.is_empty() {
             return Err("dsPIC clear ghost is not supported yet".into());
         }
-        if self.checksum.is_some() {
-            return Err("checksum operations (/CS) are not supported yet".into());
-        }
         if self.data_processing.is_some() {
             return Err("data processing (/DP) is not supported yet".into());
         }
@@ -368,6 +368,29 @@ impl Args {
         }
         if self.swap_long {
             hexfile.swap_bytes(h3xy::SwapMode::DWord)?;
+        }
+
+        // Checksum (/CS)
+        if let Some(ref cs_params) = self.checksum {
+            let algorithm = ChecksumAlgorithm::from_index(cs_params.algorithm)?;
+            let options = ChecksumOptions {
+                algorithm,
+                range: cs_params.range,
+                little_endian_output: cs_params.little_endian,
+            };
+            let lib_target = match &cs_params.target {
+                ChecksumTarget::Address(addr) => h3xy::ChecksumTarget::Address(*addr),
+                ChecksumTarget::Append => h3xy::ChecksumTarget::Append,
+                ChecksumTarget::Prepend => h3xy::ChecksumTarget::Prepend,
+                ChecksumTarget::OverwriteEnd => h3xy::ChecksumTarget::OverwriteEnd,
+                ChecksumTarget::File(path) => h3xy::ChecksumTarget::File(path.clone()),
+            };
+            let result = hexfile.checksum(&options, &lib_target)?;
+
+            // Handle file output target
+            if let ChecksumTarget::File(ref path) = cs_params.target {
+                std::fs::write(path, &result)?;
+            }
         }
 
         // Export
@@ -918,6 +941,8 @@ fn parse_remap(s: &str) -> Result<RemapParams, ParseArgError> {
 }
 
 /// Parse checksum parameters.
+/// Target formats: @append, @begin/@upfront, @end, @<address>, or filename
+/// Optional range suffix: target;0x1000-0x7FFF
 fn parse_checksum(
     algo: &str,
     target: &str,
@@ -930,18 +955,34 @@ fn parse_checksum(
             .map_err(|_| ParseArgError::InvalidNumber(algo.to_string()))?
     };
 
-    let target = if let Some(stripped) = target.strip_prefix('@') {
-        let addr = parse_number(stripped)?;
-        ChecksumTarget::Address(addr)
+    // Split target from optional range (separated by semicolon)
+    let (target_str, range) = if let Some((t, r)) = target.split_once(';') {
+        let ranges = parse_hexview_ranges(r)?;
+        (t, ranges.into_iter().next())
     } else {
-        ChecksumTarget::File(PathBuf::from(target))
+        (target, None)
+    };
+
+    let target = if let Some(stripped) = target_str.strip_prefix('@') {
+        let stripped_upper = stripped.to_ascii_uppercase();
+        match stripped_upper.as_str() {
+            "APPEND" => ChecksumTarget::Append,
+            "BEGIN" | "UPFRONT" => ChecksumTarget::Prepend,
+            "END" => ChecksumTarget::OverwriteEnd,
+            _ => {
+                let addr = parse_number(stripped)?;
+                ChecksumTarget::Address(addr)
+            }
+        }
+    } else {
+        ChecksumTarget::File(PathBuf::from(target_str))
     };
 
     Ok(ChecksumParams {
         algorithm,
         target,
         little_endian,
-        range: None,
+        range,
     })
 }
 
