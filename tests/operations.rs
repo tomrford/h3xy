@@ -181,8 +181,14 @@ fn test_fill_gaps_then_merge_overwrite() {
     assert_eq!(data, vec![0xCC; 4]);
 
     // Original data still intact
-    assert_eq!(norm.read_bytes_contiguous(0x1000, 4).unwrap(), vec![0xAA; 4]);
-    assert_eq!(norm.read_bytes_contiguous(0x1010, 4).unwrap(), vec![0xBB; 4]);
+    assert_eq!(
+        norm.read_bytes_contiguous(0x1000, 4).unwrap(),
+        vec![0xAA; 4]
+    );
+    assert_eq!(
+        norm.read_bytes_contiguous(0x1010, 4).unwrap(),
+        vec![0xBB; 4]
+    );
 }
 
 #[test]
@@ -220,7 +226,10 @@ fn test_swap_and_read() {
     hf.swap_bytes(SwapMode::Word).unwrap();
 
     let swapped = hf.read_bytes_contiguous(0x1000, 8).unwrap();
-    assert_eq!(swapped, vec![0x02, 0x01, 0x04, 0x03, 0x06, 0x05, 0x08, 0x07]);
+    assert_eq!(
+        swapped,
+        vec![0x02, 0x01, 0x04, 0x03, 0x06, 0x05, 0x08, 0x07]
+    );
 
     // Swap again to get back to original
     hf.swap_bytes(SwapMode::Word).unwrap();

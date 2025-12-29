@@ -75,9 +75,10 @@ impl HexFile {
                 let current_len = segment.data.len() as u32;
                 let aligned_len = align_up(current_len, options.alignment);
                 if aligned_len > current_len {
-                    segment.data.extend(
-                        std::iter::repeat_n(options.fill_byte, (aligned_len - current_len) as usize),
-                    );
+                    segment.data.extend(std::iter::repeat_n(
+                        options.fill_byte,
+                        (aligned_len - current_len) as usize,
+                    ));
                 }
             }
         }
@@ -242,7 +243,8 @@ mod tests {
 
     #[test]
     fn test_swap_word() {
-        let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0xAA, 0xBB, 0xCC, 0xDD])]);
+        let mut hf =
+            HexFile::with_segments(vec![Segment::new(0x1000, vec![0xAA, 0xBB, 0xCC, 0xDD])]);
         hf.swap_bytes(SwapMode::Word).unwrap();
 
         assert_eq!(hf.segments()[0].data, vec![0xBB, 0xAA, 0xDD, 0xCC]);
@@ -250,7 +252,8 @@ mod tests {
 
     #[test]
     fn test_swap_dword() {
-        let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0xAA, 0xBB, 0xCC, 0xDD])]);
+        let mut hf =
+            HexFile::with_segments(vec![Segment::new(0x1000, vec![0xAA, 0xBB, 0xCC, 0xDD])]);
         hf.swap_bytes(SwapMode::DWord).unwrap();
 
         assert_eq!(hf.segments()[0].data, vec![0xDD, 0xCC, 0xBB, 0xAA]);
@@ -384,8 +387,14 @@ mod tests {
         let original = hf.clone();
         hf.scale_addresses(4);
         hf.unscale_addresses(4).unwrap();
-        assert_eq!(hf.segments()[0].start_address, original.segments()[0].start_address);
-        assert_eq!(hf.segments()[1].start_address, original.segments()[1].start_address);
+        assert_eq!(
+            hf.segments()[0].start_address,
+            original.segments()[0].start_address
+        );
+        assert_eq!(
+            hf.segments()[1].start_address,
+            original.segments()[1].start_address
+        );
     }
 
     #[test]

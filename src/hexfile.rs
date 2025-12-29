@@ -6,7 +6,9 @@ use crate::Segment;
 
 #[derive(Debug, Error)]
 pub enum HexFileError {
-    #[error("overlapping segments at address {address:#X}: existing {existing_start:#X}..={existing_end:#X}, new {new_start:#X}..={new_end:#X}")]
+    #[error(
+        "overlapping segments at address {address:#X}: existing {existing_start:#X}..={existing_end:#X}, new {new_start:#X}..={new_end:#X}"
+    )]
     OverlappingSegments {
         address: u32,
         existing_start: u32,
@@ -16,6 +18,14 @@ pub enum HexFileError {
     },
 }
 
+/// A collection of memory segments.
+///
+/// Segments may overlap. Use `normalized()` or `normalized_lossy()` to resolve overlaps:
+/// - `normalized()` errors on overlap
+/// - `normalized_lossy()` uses "last wins" - later segments overwrite earlier ones
+///
+/// Use `append_segment` for high-priority data (wins on overlap).
+/// Use `prepend_segment` for low-priority data (loses on overlap).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HexFile {
     segments: Vec<Segment>,
@@ -48,11 +58,20 @@ impl HexFile {
         self.segments = segments;
     }
 
-    pub fn add_segment(&mut self, segment: Segment) {
+    /// Add segment with HIGH priority (wins on overlap after normalize).
+    pub fn append_segment(&mut self, segment: Segment) {
         if segment.is_empty() {
             return;
         }
         self.segments.push(segment);
+    }
+
+    /// Add segment with LOW priority (loses on overlap after normalize).
+    pub fn prepend_segment(&mut self, segment: Segment) {
+        if segment.is_empty() {
+            return;
+        }
+        self.segments.insert(0, segment);
     }
 
     pub fn is_empty(&self) -> bool {

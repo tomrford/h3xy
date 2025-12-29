@@ -64,11 +64,11 @@ impl HexFile {
         let mut new_segments = Vec::new();
 
         for segment in self.segments() {
-            let seg_range = match Range::from_start_end(segment.start_address, segment.end_address())
-            {
-                Ok(r) => r,
-                Err(_) => continue,
-            };
+            let seg_range =
+                match Range::from_start_end(segment.start_address, segment.end_address()) {
+                    Ok(r) => r,
+                    Err(_) => continue,
+                };
 
             for range in ranges {
                 if let Some(intersection) = seg_range.intersection(range) {
@@ -148,8 +148,8 @@ impl HexFile {
                 data.push(pattern[i % pattern.len()]);
             }
 
-            // Add as a new segment (will be merged/resolved later by normalize)
-            self.add_segment(Segment::new(range.start(), data));
+            // Prepend so existing data takes priority (low priority fill)
+            self.prepend_segment(Segment::new(range.start(), data));
         }
     }
 
@@ -199,18 +199,16 @@ impl HexFile {
 
         match options.mode {
             MergeMode::Overwrite => {
-                // Other data overwrites: add other's segments after ours
-                // normalized_lossy will make later segments win
+                // Other data is high priority - append so it wins
                 for segment in other_filtered.into_segments() {
-                    self.add_segment(segment);
+                    self.append_segment(segment);
                 }
             }
             MergeMode::Preserve => {
-                // Existing data preserved: add our segments after other's
-                // normalized_lossy makes later segments win, so we go last
-                let mut new_segments = other_filtered.into_segments();
-                new_segments.append(self.segments_mut());
-                self.set_segments(new_segments);
+                // Other data is low priority - prepend so existing wins
+                for segment in other_filtered.into_segments() {
+                    self.prepend_segment(segment);
+                }
             }
         }
     }
@@ -283,8 +281,7 @@ mod tests {
 
     #[test]
     fn test_cut_splits_segment() {
-        let mut hf =
-            HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01; 0x100])]);
+        let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01; 0x100])]);
         hf.cut(Range::from_start_end(0x1040, 0x107F).unwrap());
 
         let norm = hf.normalized().unwrap();

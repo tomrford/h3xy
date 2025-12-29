@@ -89,8 +89,7 @@ fn parse_number(s: &str) -> Result<u32, RangeError> {
         return Err(RangeError::InvalidNumber("empty string".to_string()));
     }
 
-    let (radix, digits) = if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X"))
-    {
+    let (radix, digits) = if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
         (16, hex)
     } else if let Some(bin) = s.strip_prefix("0b").or_else(|| s.strip_prefix("0B")) {
         (2, bin)
