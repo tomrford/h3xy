@@ -512,4 +512,125 @@ mod tests {
         assert_eq!(ChecksumAlgorithm::ByteSumBe.result_size(), 2);
         assert_eq!(ChecksumAlgorithm::Crc16.result_size(), 2);
     }
+
+    #[test]
+    fn test_crc16_arc_empty() {
+        assert_eq!(crc16_arc(&[]), 0x0000);
+    }
+
+    #[test]
+    fn test_crc32_iso_hdlc_empty() {
+        assert_eq!(crc32_iso_hdlc(&[]), 0x00000000);
+    }
+
+    #[test]
+    fn test_crc16_xmodem_empty() {
+        assert_eq!(crc16_xmodem(&[]), 0x0000);
+    }
+
+    #[test]
+    fn test_crc16_ibm_sdlc_known_vector() {
+        assert_eq!(crc16_ibm_sdlc(b"123456789"), 0x906E);
+    }
+
+    #[test]
+    fn test_hexfile_checksum_crc16() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1000, b"123456789".to_vec())]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::Crc16,
+            range: None,
+            little_endian_output: false,
+        };
+        let result = hf.calculate_checksum(&options).unwrap();
+        assert_eq!(result, vec![0xBB, 0x3D]);
+    }
+
+    #[test]
+    fn test_hexfile_checksum_crc16_le() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1000, b"123456789".to_vec())]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::Crc16,
+            range: None,
+            little_endian_output: true,
+        };
+        let result = hf.calculate_checksum(&options).unwrap();
+        assert_eq!(result, vec![0x3D, 0xBB]);
+    }
+
+    #[test]
+    fn test_hexfile_checksum_crc16_ccitt_le_init_ffff() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1000, b"123456789".to_vec())]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::Crc16CcittLe,
+            range: None,
+            little_endian_output: false,
+        };
+        let result = hf.calculate_checksum(&options).unwrap();
+        // CRC-16 IBM-SDLC: 0x906E, output forced LE
+        assert_eq!(result, vec![0x6E, 0x90]);
+    }
+
+    #[test]
+    fn test_hexfile_checksum_crc16_ccitt_be_init_ffff() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1000, b"123456789".to_vec())]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::Crc16CcittBe,
+            range: None,
+            little_endian_output: false,
+        };
+        let result = hf.calculate_checksum(&options).unwrap();
+        // CRC-16 IBM-SDLC: 0x906E, output forced BE
+        assert_eq!(result, vec![0x90, 0x6E]);
+    }
+
+    #[test]
+    fn test_hexfile_checksum_crc16_ccitt_le_init_0() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1000, b"123456789".to_vec())]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::Crc16CcittLeInit0,
+            range: None,
+            little_endian_output: false,
+        };
+        let result = hf.calculate_checksum(&options).unwrap();
+        // CRC-16 XMODEM: 0x31C3, output forced LE
+        assert_eq!(result, vec![0xC3, 0x31]);
+    }
+
+    #[test]
+    fn test_hexfile_checksum_crc16_ccitt_be_init_0() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1000, b"123456789".to_vec())]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::Crc16CcittBeInit0,
+            range: None,
+            little_endian_output: false,
+        };
+        let result = hf.calculate_checksum(&options).unwrap();
+        // CRC-16 XMODEM: 0x31C3, output forced BE
+        assert_eq!(result, vec![0x31, 0xC3]);
+    }
+
+    #[test]
+    fn test_hexfile_checksum_crc_empty_data() {
+        let hf = HexFile::new();
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::Crc32,
+            range: None,
+            little_endian_output: false,
+        };
+        let result = hf.calculate_checksum(&options).unwrap();
+        assert_eq!(result, vec![0x00, 0x00, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn test_hexfile_checksum_crc16_with_range() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1000, b"0123456789".to_vec())]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::Crc16,
+            range: Some(Range::from_start_end(0x1001, 0x1009).unwrap()),
+            little_endian_output: false,
+        };
+        let result = hf.calculate_checksum(&options).unwrap();
+        // Range extracts "123456789"
+        assert_eq!(result, vec![0xBB, 0x3D]);
+    }
 }
