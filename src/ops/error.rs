@@ -14,4 +14,7 @@ pub enum OpsError {
 
     #[error("alignment must be a power of 2, got {0}")]
     InvalidAlignment(u32),
+
+    #[error("unsupported checksum algorithm index: {0}")]
+    UnsupportedChecksumAlgorithm(u8),
 }

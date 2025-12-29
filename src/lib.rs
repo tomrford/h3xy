@@ -8,6 +8,9 @@ pub mod segment;
 pub use error::Error;
 pub use hexfile::{HexFile, HexFileError};
 pub use io::{IntelHexMode, IntelHexWriteOptions, ParseError, parse_intel_hex, write_intel_hex};
-pub use ops::{AlignOptions, FillOptions, MergeMode, MergeOptions, OpsError, SwapMode};
+pub use ops::{
+    AlignOptions, ChecksumAlgorithm, ChecksumOptions, ChecksumTarget, FillOptions, MergeMode,
+    MergeOptions, OpsError, SwapMode,
+};
 pub use range::{Range, RangeError, parse_ranges};
 pub use segment::Segment;
