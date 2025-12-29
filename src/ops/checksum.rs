@@ -229,7 +229,10 @@ impl HexFile {
             }
             ChecksumTarget::OverwriteEnd => {
                 if let Some(end) = self.max_address() {
-                    let write_addr = end.saturating_sub(result.len() as u32 - 1);
+                    // Write checksum to overwrite the last N bytes
+                    // For N bytes ending at `end`, start address is `end - (N - 1)`
+                    let offset = (result.len() as u32).saturating_sub(1);
+                    let write_addr = end.saturating_sub(offset);
                     self.write_bytes(write_addr, &result);
                 }
             }
@@ -454,6 +457,45 @@ mod tests {
 
         let norm = hf.normalized_lossy();
         assert_eq!(norm.max_address(), Some(0x1003));
+    }
+
+    #[test]
+    fn test_hexfile_checksum_overwrite_end() {
+        // Data at 0x1000-0x1003 (4 bytes), checksum is 2 bytes
+        // OverwriteEnd should write at 0x1002-0x1003
+        let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01, 0x02, 0x03, 0x04])]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::ByteSumBe,
+            range: None,
+            little_endian_output: false,
+        };
+        hf.checksum(&options, &ChecksumTarget::OverwriteEnd).unwrap();
+
+        let norm = hf.normalized_lossy();
+        assert_eq!(norm.segments().len(), 1);
+        assert_eq!(norm.min_address(), Some(0x1000));
+        assert_eq!(norm.max_address(), Some(0x1003)); // Same end address
+        // First two bytes unchanged, last two overwritten with checksum (0x000A)
+        assert_eq!(norm.segments()[0].data, vec![0x01, 0x02, 0x00, 0x0A]);
+    }
+
+    #[test]
+    fn test_hexfile_checksum_overwrite_end_crc32() {
+        // Data at 0x1000-0x1007 (8 bytes), CRC32 is 4 bytes
+        // OverwriteEnd should write at 0x1004-0x1007
+        let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0xAA; 8])]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::Crc32,
+            range: None,
+            little_endian_output: false,
+        };
+        hf.checksum(&options, &ChecksumTarget::OverwriteEnd).unwrap();
+
+        let norm = hf.normalized_lossy();
+        assert_eq!(norm.min_address(), Some(0x1000));
+        assert_eq!(norm.max_address(), Some(0x1007)); // Same end address
+        // First 4 bytes unchanged
+        assert_eq!(&norm.segments()[0].data[..4], &[0xAA, 0xAA, 0xAA, 0xAA]);
     }
 
     #[test]
