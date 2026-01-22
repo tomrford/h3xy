@@ -334,6 +334,26 @@ fn test_cli_hex_ascii_single_digit_tokens() {
 }
 
 #[test]
+fn test_cli_auto_detect_binary_on_non_ascii() {
+    let dir = temp_dir("cli_auto_bin");
+    let input = dir.join("input.dat");
+    let out = dir.join("out.bin");
+    write_file(&input, &[0xFF, 0x00, 0x01]);
+
+    let args = vec![
+        input.display().to_string(),
+        "/XN".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+
+    let output = run_h3xy(&args);
+    assert_success(&output);
+    let data = std::fs::read(&out).unwrap();
+    assert_eq!(data, vec![0xFF, 0x00, 0x01]);
+}
+
+#[test]
 fn test_cli_remap_basic() {
     let dir = temp_dir("cli_remap");
     let input = dir.join("input.hex");

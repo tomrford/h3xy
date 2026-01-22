@@ -11,12 +11,45 @@ use super::types::OutputFormat;
 pub(super) fn load_input(path: &Path) -> Result<HexFile, CliError> {
     let content = std::fs::read(path)?;
 
-    let first_line = content
-        .iter()
-        .take_while(|&&b| b != b'\n' && b != b'\r')
-        .copied()
-        .collect::<Vec<u8>>();
+    let mut ascii_only = true;
+    let mut first_nonempty_line: Option<Vec<u8>> = None;
+    let mut ascii_lines_checked = 0usize;
+    let mut current_line: Vec<u8> = Vec::new();
 
+    for &b in &content {
+        if b == b'\n' || b == b'\r' {
+            if !current_line.is_empty() {
+                if ascii_lines_checked < 25 {
+                    if !current_line.is_ascii() {
+                        ascii_only = false;
+                    }
+                    ascii_lines_checked += 1;
+                }
+                if first_nonempty_line.is_none() {
+                    first_nonempty_line = Some(current_line.clone());
+                }
+                if ascii_lines_checked >= 25 {
+                    break;
+                }
+            }
+            current_line.clear();
+            continue;
+        }
+        current_line.push(b);
+    }
+    if !current_line.is_empty() && first_nonempty_line.is_none() {
+        first_nonempty_line = Some(current_line.clone());
+    }
+
+    if ascii_lines_checked == 0 && content.len() > 0 {
+        ascii_only = content.is_ascii();
+    }
+
+    if !ascii_only {
+        return Ok(h3xy::parse_binary(&content, 0)?);
+    }
+
+    let first_line = first_nonempty_line.unwrap_or_default();
     if first_line.first() == Some(&b':') {
         let hexfile = h3xy::parse_intel_hex(&content)?;
         Ok(hexfile)
