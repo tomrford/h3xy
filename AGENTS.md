@@ -123,6 +123,7 @@ cargo run -- [args]   # Run CLI
 - HEX ASCII import now token-based: accepts 1 or 2 hex-digit tokens, supports 0x prefix, contiguous pairs, and treats non-hex as separators.
 - Intel-HEX auto output now omits extended records when max address <= 0xFFFF.
 - CLI auto-detect now scans up to first 25 non-empty lines for ASCII; if any non-ASCII, treat as binary input (manual behavior).
+- S-Record parsing accepts lowercase 's' prefix; CLI auto-detect recognizes it too.
 
 ### TODOs (current)
 - Review segment overflow policy (saturating `end_address` vs strict error) once validation suite runs.

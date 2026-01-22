@@ -35,7 +35,7 @@ pub fn parse_srec(data: &[u8]) -> Result<HexFile, ParseError> {
         if line.is_empty() {
             continue;
         }
-        if line[0] != b'S' || line.len() < 2 {
+        if (line[0] != b'S' && line[0] != b's') || line.len() < 2 {
             return Err(ParseError::InvalidRecord {
                 line: line_no,
                 message: "missing S-record prefix".to_string(),
@@ -303,5 +303,14 @@ mod tests {
         let out = write_srec(&hexfile, &SRecordWriteOptions::default()).unwrap();
         let text = String::from_utf8(out).unwrap();
         assert!(text.starts_with("S2"));
+    }
+
+    #[test]
+    fn test_parse_lowercase_prefix() {
+        let data = b"s10500000102f7\ns9030000fc\n";
+        let parsed = parse_srec(data).unwrap();
+        let norm = parsed.normalized_lossy();
+        assert_eq!(norm.segments()[0].start_address, 0x0000);
+        assert_eq!(norm.segments()[0].data, vec![0x01, 0x02]);
     }
 }

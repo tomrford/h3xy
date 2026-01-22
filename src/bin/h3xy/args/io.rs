@@ -53,7 +53,7 @@ pub(super) fn load_input(path: &Path) -> Result<HexFile, CliError> {
     if first_line.first() == Some(&b':') {
         let hexfile = h3xy::parse_intel_hex(&content)?;
         Ok(hexfile)
-    } else if first_line.first() == Some(&b'S') {
+    } else if matches!(first_line.first(), Some(b'S') | Some(b's')) {
         let hexfile = h3xy::parse_srec(&content)?;
         Ok(hexfile)
     } else {

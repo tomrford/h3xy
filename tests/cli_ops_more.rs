@@ -394,6 +394,26 @@ fn test_cli_auto_detect_srec_after_blank_lines() {
 }
 
 #[test]
+fn test_cli_auto_detect_srec_lowercase() {
+    let dir = temp_dir("cli_auto_srec_lower");
+    let input = dir.join("input.s19");
+    let out = dir.join("out.bin");
+    let data = b"s10500000102f7\ns9030000fc\n";
+    write_file(&input, data);
+
+    let args = vec![
+        input.display().to_string(),
+        "/XN".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+    let output = run_h3xy(&args);
+    assert_success(&output);
+    let data = std::fs::read(&out).unwrap();
+    assert_eq!(data, vec![0x01, 0x02]);
+}
+
+#[test]
 fn test_cli_remap_basic() {
     let dir = temp_dir("cli_remap");
     let input = dir.join("input.hex");
