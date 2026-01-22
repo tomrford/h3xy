@@ -315,6 +315,25 @@ fn test_cli_dspic_clear_ghost() {
 }
 
 #[test]
+fn test_cli_hex_ascii_single_digit_tokens() {
+    let dir = temp_dir("cli_hex_ascii_tokens");
+    let input = dir.join("input.txt");
+    let out = dir.join("out.hex");
+    write_file(&input, b"A B C");
+
+    let args = vec![
+        format!("/IA:{}", input.display()),
+        "/XI".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+
+    let hexfile = run_hex_output(args, &out);
+    let out_bytes = hexfile.read_bytes_contiguous(0x0, 3).unwrap();
+    assert_eq!(out_bytes, vec![0x0A, 0x0B, 0x0C]);
+}
+
+#[test]
 fn test_cli_remap_basic() {
     let dir = temp_dir("cli_remap");
     let input = dir.join("input.hex");

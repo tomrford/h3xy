@@ -118,6 +118,7 @@ cargo run -- [args]   # Run CLI
 - `/DP` and `/PB` depend on vendor DLLs (EXPDATPROC/PBUILD) and are proprietary; exclude from first-pass validation.
 - dsPIC ops implemented: `/CDSPX` appends two zero bytes per 2 bytes (target defaults to start*2); `/CDSPS` keeps lower two bytes per 4 bytes (target defaults to start/2); `/CDSPG` clears every 4th byte. Byte ordering assumed; validate.
 - Number parsing now tolerates `.` or `_` separators in numeric literals (addresses/ranges).
+- HEX ASCII import now token-based: accepts 1 or 2 hex-digit tokens, supports 0x prefix, contiguous pairs, and treats non-hex as separators.
 
 ### TODOs (current)
 - Review segment overflow policy (saturating `end_address` vs strict error) once validation suite runs.

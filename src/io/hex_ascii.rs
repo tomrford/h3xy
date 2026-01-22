@@ -17,33 +17,29 @@ impl Default for HexAsciiWriteOptions {
 }
 
 /// Parse a HEX ASCII data file into a single segment at the given base address.
-/// Non-hex characters are treated as separators and ignored.
+/// Non-hex characters are treated as separators.
 pub fn parse_hex_ascii(data: &[u8], base_address: u32) -> Result<HexFile, ParseError> {
     let mut bytes = Vec::new();
     let mut line_no = 1usize;
-    let mut line_digits: Vec<u8> = Vec::new();
+    let mut token_digits: Vec<u8> = Vec::new();
 
     let mut idx = 0usize;
     while idx < data.len() {
         let b = data[idx];
-        if b == b'\n' {
-            if !line_digits.len().is_multiple_of(2) {
-                return Err(ParseError::InvalidRecord {
-                    line: line_no,
-                    message: "odd number of hex digits".to_string(),
-                });
-            }
-            push_hex_pairs(&line_digits, &mut bytes, line_no)?;
-            line_digits.clear();
-            line_no += 1;
-            idx += 1;
-            continue;
-        }
         if b == b'\r' {
             idx += 1;
             continue;
         }
-        if b == b'0' && idx + 1 < data.len() {
+        if b == b'\n' {
+            if !token_digits.is_empty() {
+                push_hex_token(&token_digits, &mut bytes, line_no)?;
+                token_digits.clear();
+            }
+            line_no += 1;
+            idx += 1;
+            continue;
+        }
+        if b == b'0' && idx + 1 < data.len() && token_digits.is_empty() {
             let next = data[idx + 1];
             if next == b'x' || next == b'X' {
                 idx += 2;
@@ -51,18 +47,20 @@ pub fn parse_hex_ascii(data: &[u8], base_address: u32) -> Result<HexFile, ParseE
             }
         }
         if (b as char).is_ascii_hexdigit() {
-            line_digits.push(b);
+            token_digits.push(b);
+            idx += 1;
+            continue;
+        }
+        if !token_digits.is_empty() {
+            push_hex_token(&token_digits, &mut bytes, line_no)?;
+            token_digits.clear();
         }
         idx += 1;
     }
 
-    if !line_digits.len().is_multiple_of(2) {
-        return Err(ParseError::InvalidRecord {
-            line: line_no,
-            message: "odd number of hex digits".to_string(),
-        });
+    if !token_digits.is_empty() {
+        push_hex_token(&token_digits, &mut bytes, line_no)?;
     }
-    push_hex_pairs(&line_digits, &mut bytes, line_no)?;
 
     if bytes.is_empty() {
         return Ok(HexFile::new());
@@ -122,7 +120,25 @@ pub fn write_hex_ascii(hexfile: &HexFile, options: &HexAsciiWriteOptions) -> Vec
     out
 }
 
-fn push_hex_pairs(digits: &[u8], out: &mut Vec<u8>, line: usize) -> Result<(), ParseError> {
+fn push_hex_token(digits: &[u8], out: &mut Vec<u8>, line: usize) -> Result<(), ParseError> {
+    if digits.len() == 1 {
+        let hi = (digits[0] as char)
+            .to_digit(16)
+            .ok_or(ParseError::InvalidHexDigit {
+                line,
+                char: digits[0] as char,
+            })?;
+        out.push(hi as u8);
+        return Ok(());
+    }
+
+    if !digits.len().is_multiple_of(2) {
+        return Err(ParseError::InvalidRecord {
+            line,
+            message: "odd number of hex digits".to_string(),
+        });
+    }
+
     let mut iter = digits.iter();
     while let (Some(&hi), Some(&lo)) = (iter.next(), iter.next()) {
         let hi = (hi as char)
@@ -173,5 +189,19 @@ mod tests {
         let parsed = parse_hex_ascii(data, 0x2000).unwrap();
         assert_eq!(parsed.segments()[0].start_address, 0x2000);
         assert_eq!(parsed.segments()[0].data, vec![0x12, 0x34, 0xAB]);
+    }
+
+    #[test]
+    fn test_hex_ascii_single_digit_tokens() {
+        let data = b"A B C";
+        let parsed = parse_hex_ascii(data, 0).unwrap();
+        assert_eq!(parsed.segments()[0].data, vec![0x0A, 0x0B, 0x0C]);
+    }
+
+    #[test]
+    fn test_hex_ascii_contiguous_pairs() {
+        let data = b"23456789";
+        let parsed = parse_hex_ascii(data, 0).unwrap();
+        assert_eq!(parsed.segments()[0].data, vec![0x23, 0x45, 0x67, 0x89]);
     }
 }
