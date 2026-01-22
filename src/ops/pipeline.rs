@@ -9,7 +9,7 @@ use crate::{
 use super::{
     LogCommand, LogError, OpsError, execute_log_commands, flag_align, flag_checksum,
     flag_cut_ranges, flag_fill_all, flag_fill_ranges_pattern, flag_fill_ranges_random,
-    flag_filter_ranges, flag_map_star12, flag_map_star12x, flag_merge_opaque,
+    flag_filter_ranges, flag_map_star08, flag_map_star12, flag_map_star12x, flag_merge_opaque,
     flag_merge_transparent, flag_remap, flag_split, flag_swap_long, flag_swap_word,
 };
 
@@ -48,6 +48,7 @@ pub struct Pipeline {
     pub checksum: Option<PipelineChecksum>,
     pub map_star12: bool,
     pub map_star12x: bool,
+    pub map_star08: bool,
     pub remap: Option<RemapOptions>,
 }
 
@@ -70,6 +71,7 @@ impl Default for Pipeline {
             checksum: None,
             map_star12: false,
             map_star12x: false,
+            map_star08: false,
             remap: None,
         }
     }
@@ -107,6 +109,9 @@ impl Pipeline {
         }
         if self.map_star12x {
             flag_map_star12x(&mut hexfile)?;
+        }
+        if self.map_star08 {
+            flag_map_star08(&mut hexfile)?;
         }
         if let Some(ref remap) = self.remap {
             flag_remap(&mut hexfile, remap)?;

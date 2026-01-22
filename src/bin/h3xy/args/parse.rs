@@ -58,7 +58,7 @@ fn parse_simple_flag(args: &mut Args, opt_upper: &str) -> bool {
             args.swap_long = true;
             true
         }
-        "S08" => {
+        "S08" | "S08MAP" => {
             args.s08_map = true;
             true
         }

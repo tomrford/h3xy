@@ -145,6 +145,10 @@ pub fn flag_map_star12x(hexfile: &mut HexFile) -> Result<(), OpsError> {
         .map_err(|e| e.with_context("/S12XMAP"))
 }
 
+pub fn flag_map_star08(hexfile: &mut HexFile) -> Result<(), OpsError> {
+    hexfile.map_star08().map_err(|e| e.with_context("/S08MAP"))
+}
+
 pub fn flag_checksum(
     hexfile: &mut HexFile,
     algorithm: ChecksumAlgorithm,

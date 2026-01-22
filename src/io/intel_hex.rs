@@ -190,7 +190,9 @@ pub fn parse_intel_hex_16bit(input: &[u8]) -> Result<HexFile, ParseError> {
         if !seg.data.is_empty() {
             start
                 .checked_add(seg.data.len() as u32 - 1)
-                .ok_or_else(|| ParseError::AddressOverflow("16-bit address overflow".to_string()))?;
+                .ok_or_else(|| {
+                    ParseError::AddressOverflow("16-bit address overflow".to_string())
+                })?;
         }
         segments.push(Segment::new(start, seg.data.clone()));
     }

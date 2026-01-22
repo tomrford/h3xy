@@ -380,6 +380,50 @@ impl HexFile {
             nonbank_high_base: 0x7FC000,
         })
     }
+
+    pub fn map_star08(&mut self) -> Result<(), OpsError> {
+        for segment in self.segments_mut() {
+            let start = segment.start_address;
+            let end = segment.end_address();
+
+            if start >= 0x4000 && end <= 0x7FFF {
+                let offset = start - 0x4000;
+                segment.start_address = 0x104000u32.checked_add(offset).ok_or_else(|| {
+                    OpsError::AddressOverflow(format!(
+                        "star08 low map overflow (start={:#X})",
+                        start
+                    ))
+                })?;
+                continue;
+            }
+
+            let bank = (start >> 16) as u8;
+            let bank_base = ((bank as u32) << 16) + 0x8000;
+            let bank_end = bank_base + 0x3FFF;
+            if start < bank_base || end > bank_end {
+                continue;
+            }
+
+            let linear_bank_base = 0x100000u32
+                .checked_add((bank as u32).checked_mul(0x4000).ok_or_else(|| {
+                    OpsError::AddressOverflow(format!("star08 bank base overflow (bank={})", bank))
+                })?)
+                .ok_or_else(|| {
+                    OpsError::AddressOverflow(format!("star08 bank base overflow (bank={})", bank))
+                })?;
+            segment.start_address =
+                linear_bank_base
+                    .checked_add(start - bank_base)
+                    .ok_or_else(|| {
+                        OpsError::AddressOverflow(format!(
+                            "star08 bank map overflow (start={:#X})",
+                            start
+                        ))
+                    })?;
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -758,5 +802,19 @@ mod tests {
         assert_eq!(segments[0].start_address, 0x780000);
         assert_eq!(segments[1].start_address, 0x7F4000);
         assert_eq!(segments[2].start_address, 0x7FC000);
+    }
+
+    #[test]
+    fn test_map_star08_examples() {
+        let mut hf = HexFile::with_segments(vec![
+            Segment::new(0x4000, vec![0xAA]),
+            Segment::new(0x028000, vec![0xBB]),
+        ]);
+
+        hf.map_star08().unwrap();
+        let mut segments = hf.segments().to_vec();
+        segments.sort_by_key(|s| s.start_address);
+        assert_eq!(segments[0].start_address, 0x104000);
+        assert_eq!(segments[1].start_address, 0x108000);
     }
 }

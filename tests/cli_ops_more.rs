@@ -222,6 +222,33 @@ fn test_cli_import_i16_scales_addresses() {
 }
 
 #[test]
+fn test_cli_s08map_examples() {
+    let dir = temp_dir("cli_s08map");
+    let input = dir.join("input.hex");
+    let out = dir.join("out.hex");
+    let hexfile = HexFile::with_segments(vec![
+        Segment::new(0x4000, vec![0xAA]),
+        Segment::new(0x028000, vec![0xBB]),
+    ]);
+    let data = write_intel_hex(&hexfile, &IntelHexWriteOptions::default());
+    write_file(&input, &data);
+
+    let args = vec![
+        input.display().to_string(),
+        "/S08MAP".to_string(),
+        "/XI".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+
+    let hexfile = run_hex_output(args, &out);
+    let mut segments = hexfile.segments().to_vec();
+    segments.sort_by_key(|s| s.start_address);
+    assert_eq!(segments[0].start_address, 0x104000);
+    assert_eq!(segments[1].start_address, 0x108000);
+}
+
+#[test]
 fn test_cli_remap_basic() {
     let dir = temp_dir("cli_remap");
     let input = dir.join("input.hex");

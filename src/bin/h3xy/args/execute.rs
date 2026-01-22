@@ -19,14 +19,14 @@ impl Args {
                 "cannot combine /MT and /MO in one command".into(),
             ));
         }
-        if self.s08_map {
-            return Err(CliError::Unsupported(
-                "S08 address mapping is not supported yet".into(),
-            ));
-        }
         if self.s12_map && self.s12x_map {
             return Err(CliError::Unsupported(
                 "cannot combine /S12MAP and /S12XMAP".into(),
+            ));
+        }
+        if self.s08_map && (self.s12_map || self.s12x_map) {
+            return Err(CliError::Unsupported(
+                "cannot combine /S08MAP with /S12MAP or /S12XMAP".into(),
             ));
         }
         if self.remap.is_some() && (self.s12_map || self.s12x_map || self.s08_map) {
@@ -129,6 +129,9 @@ impl Args {
         }
         if self.s12x_map {
             self.wrap_error("/S12XMAP", h3xy::flag_map_star12x(hexfile))?;
+        }
+        if self.s08_map {
+            self.wrap_error("/S08MAP", h3xy::flag_map_star08(hexfile))?;
         }
         if let Some(ref remap) = self.remap {
             let options = RemapOptions {
