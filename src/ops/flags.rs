@@ -149,6 +149,32 @@ pub fn flag_map_star08(hexfile: &mut HexFile) -> Result<(), OpsError> {
     hexfile.map_star08().map_err(|e| e.with_context("/S08MAP"))
 }
 
+pub fn flag_dspic_expand(
+    hexfile: &mut HexFile,
+    range: Range,
+    target: Option<u32>,
+) -> Result<(), OpsError> {
+    hexfile
+        .dspic_expand(range, target)
+        .map_err(|e| e.with_context("/CDSPX"))
+}
+
+pub fn flag_dspic_shrink(
+    hexfile: &mut HexFile,
+    range: Range,
+    target: Option<u32>,
+) -> Result<(), OpsError> {
+    hexfile
+        .dspic_shrink(range, target)
+        .map_err(|e| e.with_context("/CDSPS"))
+}
+
+pub fn flag_dspic_clear_ghost(hexfile: &mut HexFile, range: Range) -> Result<(), OpsError> {
+    hexfile
+        .dspic_clear_ghost(range)
+        .map_err(|e| e.with_context("/CDSPG"))
+}
+
 pub fn flag_checksum(
     hexfile: &mut HexFile,
     algorithm: ChecksumAlgorithm,

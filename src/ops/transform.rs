@@ -1,5 +1,5 @@
 use super::OpsError;
-use crate::{HexFile, Segment};
+use crate::{HexFile, Range, Segment};
 
 /// Mode for byte swapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,6 +154,103 @@ impl HexFile {
             }
         }
 
+        Ok(())
+    }
+
+    /// Expand dsPIC-like data: 2 bytes -> 4 bytes (appends two zero bytes).
+    /// Copies data to the target address (default: source_start * 2).
+    pub fn dspic_expand(&mut self, range: Range, target: Option<u32>) -> Result<(), OpsError> {
+        let length = range.length() as usize;
+        if length % 2 != 0 {
+            return Err(OpsError::LengthNotMultiple {
+                length,
+                expected: 2,
+                operation: format!("/CDSPX range {:#X}-{:#X}", range.start(), range.end()),
+            });
+        }
+
+        let src =
+            self.read_bytes_contiguous(range.start(), length)
+                .ok_or(OpsError::RangeNotCovered {
+                    start: range.start(),
+                    length: range.length(),
+                })?;
+
+        let mut out = Vec::with_capacity(length * 2);
+        for chunk in src.chunks_exact(2) {
+            out.extend_from_slice(chunk);
+            out.extend_from_slice(&[0x00, 0x00]);
+        }
+
+        let target = match target {
+            Some(addr) => addr,
+            None => range
+                .start()
+                .checked_mul(2)
+                .ok_or_else(|| OpsError::AddressOverflow("dspic expand target overflow".into()))?,
+        };
+        self.write_bytes(target, &out);
+        Ok(())
+    }
+
+    /// Shrink dsPIC-like data: 4 bytes -> 2 bytes (keeps lower two bytes).
+    /// Copies data to the target address (default: source_start / 2).
+    pub fn dspic_shrink(&mut self, range: Range, target: Option<u32>) -> Result<(), OpsError> {
+        let length = range.length() as usize;
+        if length % 4 != 0 {
+            return Err(OpsError::LengthNotMultiple {
+                length,
+                expected: 4,
+                operation: format!("/CDSPS range {:#X}-{:#X}", range.start(), range.end()),
+            });
+        }
+        if target.is_none() && range.start() % 2 != 0 {
+            return Err(OpsError::AddressNotDivisible {
+                address: range.start(),
+                divisor: 2,
+            });
+        }
+
+        let src =
+            self.read_bytes_contiguous(range.start(), length)
+                .ok_or(OpsError::RangeNotCovered {
+                    start: range.start(),
+                    length: range.length(),
+                })?;
+
+        let mut out = Vec::with_capacity(length / 2);
+        for chunk in src.chunks_exact(4) {
+            out.extend_from_slice(&chunk[0..2]);
+        }
+
+        let target = target.unwrap_or(range.start() / 2);
+        self.write_bytes(target, &out);
+        Ok(())
+    }
+
+    /// Clear dsPIC ghost bytes: set highest byte in each 4-byte group to 0.
+    pub fn dspic_clear_ghost(&mut self, range: Range) -> Result<(), OpsError> {
+        let length = range.length() as usize;
+        if length % 4 != 0 {
+            return Err(OpsError::LengthNotMultiple {
+                length,
+                expected: 4,
+                operation: format!("/CDSPG range {:#X}-{:#X}", range.start(), range.end()),
+            });
+        }
+
+        let mut data =
+            self.read_bytes_contiguous(range.start(), length)
+                .ok_or(OpsError::RangeNotCovered {
+                    start: range.start(),
+                    length: range.length(),
+                })?;
+
+        for chunk in data.chunks_exact_mut(4) {
+            chunk[3] = 0x00;
+        }
+
+        self.write_bytes(range.start(), &data);
         Ok(())
     }
 
@@ -816,5 +913,42 @@ mod tests {
         segments.sort_by_key(|s| s.start_address);
         assert_eq!(segments[0].start_address, 0x104000);
         assert_eq!(segments[1].start_address, 0x108000);
+    }
+
+    #[test]
+    fn test_dspic_expand_appends_zeros() {
+        let mut hf =
+            HexFile::with_segments(vec![Segment::new(0x1000, vec![0xAA, 0xBB, 0xCC, 0xDD])]);
+        hf.dspic_expand(Range::from_start_length(0x1000, 4).unwrap(), None)
+            .unwrap();
+
+        let out = hf.read_bytes_contiguous(0x2000, 8).unwrap();
+        assert_eq!(out, vec![0xAA, 0xBB, 0x00, 0x00, 0xCC, 0xDD, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn test_dspic_shrink_keeps_low_bytes() {
+        let mut hf = HexFile::with_segments(vec![Segment::new(
+            0x2000,
+            vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88],
+        )]);
+        hf.dspic_shrink(Range::from_start_length(0x2000, 8).unwrap(), None)
+            .unwrap();
+
+        let out = hf.read_bytes_contiguous(0x1000, 4).unwrap();
+        assert_eq!(out, vec![0x11, 0x22, 0x55, 0x66]);
+    }
+
+    #[test]
+    fn test_dspic_clear_ghost() {
+        let mut hf = HexFile::with_segments(vec![Segment::new(
+            0x3000,
+            vec![0x01, 0x02, 0x03, 0xFF, 0x10, 0x11, 0x12, 0xEE],
+        )]);
+        hf.dspic_clear_ghost(Range::from_start_length(0x3000, 8).unwrap())
+            .unwrap();
+
+        let out = hf.read_bytes_contiguous(0x3000, 8).unwrap();
+        assert_eq!(out, vec![0x01, 0x02, 0x03, 0x00, 0x10, 0x11, 0x12, 0x00]);
     }
 }

@@ -39,21 +39,6 @@ impl Args {
                 "postbuild (/PB) is not supported yet".into(),
             ));
         }
-        if !self.dspic_expand.is_empty() {
-            return Err(CliError::Unsupported(
-                "dsPIC expand is not supported yet".into(),
-            ));
-        }
-        if !self.dspic_shrink.is_empty() {
-            return Err(CliError::Unsupported(
-                "dsPIC shrink is not supported yet".into(),
-            ));
-        }
-        if !self.dspic_clear_ghost.is_empty() {
-            return Err(CliError::Unsupported(
-                "dsPIC clear ghost is not supported yet".into(),
-            ));
-        }
         if self.data_processing.is_some() {
             return Err(CliError::Unsupported(
                 "data processing (/DP) is not supported yet".into(),
@@ -89,6 +74,7 @@ impl Args {
 
         let mut hexfile = self.load_hexfile()?;
         self.apply_mappings(&mut hexfile)?;
+        self.apply_dspic(&mut hexfile)?;
         self.apply_fill(&mut hexfile);
         self.apply_cut(&mut hexfile);
         self.apply_merge(&mut hexfile)?;
@@ -142,6 +128,22 @@ impl Args {
                 inc: remap.inc,
             };
             self.wrap_error("/REMAP", h3xy::flag_remap(hexfile, &options))?;
+        }
+        Ok(())
+    }
+
+    fn apply_dspic(&self, hexfile: &mut h3xy::HexFile) -> Result<(), CliError> {
+        for op in &self.dspic_expand {
+            let opt = "/CDSPX";
+            self.wrap_error(opt, h3xy::flag_dspic_expand(hexfile, op.range, op.target))?;
+        }
+        for op in &self.dspic_shrink {
+            let opt = "/CDSPS";
+            self.wrap_error(opt, h3xy::flag_dspic_shrink(hexfile, op.range, op.target))?;
+        }
+        for range in &self.dspic_clear_ghost {
+            let opt = "/CDSPG";
+            self.wrap_error(opt, h3xy::flag_dspic_clear_ghost(hexfile, *range))?;
         }
         Ok(())
     }

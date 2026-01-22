@@ -249,6 +249,72 @@ fn test_cli_s08map_examples() {
 }
 
 #[test]
+fn test_cli_dspic_expand_default_target() {
+    let dir = temp_dir("cli_cdspx");
+    let input = dir.join("input.bin");
+    let out = dir.join("out.hex");
+    write_file(&input, &[0xAA, 0xBB, 0xCC, 0xDD]);
+
+    let args = vec![
+        format!("/IN:{};0x1000", input.display()),
+        "/CDSPX:0x1000,0x4".to_string(),
+        "/XI".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+
+    let hexfile = run_hex_output(args, &out);
+    let out_bytes = hexfile.read_bytes_contiguous(0x2000, 8).unwrap();
+    assert_eq!(
+        out_bytes,
+        vec![0xAA, 0xBB, 0x00, 0x00, 0xCC, 0xDD, 0x00, 0x00]
+    );
+}
+
+#[test]
+fn test_cli_dspic_shrink_default_target() {
+    let dir = temp_dir("cli_cdsps");
+    let input = dir.join("input.bin");
+    let out = dir.join("out.hex");
+    write_file(&input, &[0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]);
+
+    let args = vec![
+        format!("/IN:{};0x2000", input.display()),
+        "/CDSPS:0x2000,0x8".to_string(),
+        "/XI".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+
+    let hexfile = run_hex_output(args, &out);
+    let out_bytes = hexfile.read_bytes_contiguous(0x1000, 4).unwrap();
+    assert_eq!(out_bytes, vec![0x11, 0x22, 0x55, 0x66]);
+}
+
+#[test]
+fn test_cli_dspic_clear_ghost() {
+    let dir = temp_dir("cli_cdspg");
+    let input = dir.join("input.bin");
+    let out = dir.join("out.hex");
+    write_file(&input, &[0x01, 0x02, 0x03, 0xFF, 0x10, 0x11, 0x12, 0xEE]);
+
+    let args = vec![
+        format!("/IN:{};0x3000", input.display()),
+        "/CDSPG:0x3000,0x8".to_string(),
+        "/XI".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+
+    let hexfile = run_hex_output(args, &out);
+    let out_bytes = hexfile.read_bytes_contiguous(0x3000, 8).unwrap();
+    assert_eq!(
+        out_bytes,
+        vec![0x01, 0x02, 0x03, 0x00, 0x10, 0x11, 0x12, 0x00]
+    );
+}
+
+#[test]
 fn test_cli_remap_basic() {
     let dir = temp_dir("cli_remap");
     let input = dir.join("input.hex");

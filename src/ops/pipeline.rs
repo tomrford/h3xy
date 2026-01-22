@@ -8,9 +8,10 @@ use crate::{
 
 use super::{
     LogCommand, LogError, OpsError, execute_log_commands, flag_align, flag_checksum,
-    flag_cut_ranges, flag_fill_all, flag_fill_ranges_pattern, flag_fill_ranges_random,
-    flag_filter_ranges, flag_map_star08, flag_map_star12, flag_map_star12x, flag_merge_opaque,
-    flag_merge_transparent, flag_remap, flag_split, flag_swap_long, flag_swap_word,
+    flag_cut_ranges, flag_dspic_clear_ghost, flag_dspic_expand, flag_dspic_shrink, flag_fill_all,
+    flag_fill_ranges_pattern, flag_fill_ranges_random, flag_filter_ranges, flag_map_star08,
+    flag_map_star12, flag_map_star12x, flag_merge_opaque, flag_merge_transparent, flag_remap,
+    flag_split, flag_swap_long, flag_swap_word,
 };
 
 #[derive(Debug, Clone)]
@@ -28,6 +29,12 @@ pub struct PipelineChecksum {
     pub forced_range: Option<ForcedRange>,
     pub exclude_ranges: Vec<Range>,
     pub target: ChecksumTarget,
+}
+
+#[derive(Debug, Clone)]
+pub struct PipelineDspic {
+    pub range: Range,
+    pub target: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +57,9 @@ pub struct Pipeline {
     pub map_star12x: bool,
     pub map_star08: bool,
     pub remap: Option<RemapOptions>,
+    pub dspic_expand: Vec<PipelineDspic>,
+    pub dspic_shrink: Vec<PipelineDspic>,
+    pub dspic_clear_ghost: Vec<Range>,
 }
 
 impl Default for Pipeline {
@@ -73,6 +83,9 @@ impl Default for Pipeline {
             map_star12x: false,
             map_star08: false,
             remap: None,
+            dspic_expand: Vec::new(),
+            dspic_shrink: Vec::new(),
+            dspic_clear_ghost: Vec::new(),
         }
     }
 }
@@ -115,6 +128,16 @@ impl Pipeline {
         }
         if let Some(ref remap) = self.remap {
             flag_remap(&mut hexfile, remap)?;
+        }
+
+        for op in &self.dspic_expand {
+            flag_dspic_expand(&mut hexfile, op.range, op.target)?;
+        }
+        for op in &self.dspic_shrink {
+            flag_dspic_shrink(&mut hexfile, op.range, op.target)?;
+        }
+        for range in &self.dspic_clear_ghost {
+            flag_dspic_clear_ghost(&mut hexfile, *range)?;
         }
 
         if let Some(ref pattern) = self.fill_pattern {

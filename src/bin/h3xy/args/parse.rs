@@ -256,11 +256,15 @@ fn parse_dspic_option(
 ) -> Result<bool, ParseArgError> {
     match key_upper {
         "CDSPX" => {
-            args.dspic_expand.push(parse_dspic_op(value)?);
+            for part in value.split(':').filter(|p| !p.is_empty()) {
+                args.dspic_expand.push(parse_dspic_op(part)?);
+            }
             Ok(true)
         }
         "CDSPS" => {
-            args.dspic_shrink.push(parse_dspic_op(value)?);
+            for part in value.split(':').filter(|p| !p.is_empty()) {
+                args.dspic_shrink.push(parse_dspic_op(part)?);
+            }
             Ok(true)
         }
         _ => Ok(false),

@@ -24,6 +24,9 @@ pub enum OpsError {
     #[error("invalid remap parameters: {0}")]
     InvalidRemapParams(String),
 
+    #[error("range not fully covered by data: start {start:#X}, length {length}")]
+    RangeNotCovered { start: u32, length: u32 },
+
     #[error("{context}: {source}")]
     Context {
         context: String,
