@@ -1,22 +1,25 @@
 //! HexView-compatible CLI argument parsing and execution.
 //!
-//! Processing order matches HexView:
+//! Processing order matches HexView (implemented subset):
 //! 1. Read input file
 //! 2. Open error log (/E)
 //! 3. Set silent mode (/S)
 //! 4. Import 16-bit Hex (/II2)
-//! 5. Address mapping (/s12map, /remap, etc.)
-//! 6. Fill ranges (/FR)
-//! 7. Cut ranges (/CR)
-//! 8. Merge files (/MT, /MO)
-//! 9. Address range filter (/AR)
-//! 10. Execute log commands (/L)
-//! 11. Create single-region (/FA)
-//! 12. Postbuild (/PB)
+//! 5. Address mapping (/S08MAP, /S12MAP, /REMAP)
+//! 6. dsPIC ops (/CDSPX, /CDSPS, /CDSPG)
+//! 7. Fill ranges (/FR)
+//! 8. Cut ranges (/CR)
+//! 9. Merge files (/MT, /MO)
+//! 10. Address range filter (/AR)
+//! 11. Execute log commands (/L)
+//! 12. Create single-region (/FA)
 //! 13. Align (/AD, /AL)
-//! 14. Checksum (/CS)
-//! 15. Data processing (/DP)
-//! 16. Export (/Xx)
+//! 14. Split blocks (/SB)
+//! 15. Swap bytes (/SWAPWORD, /SWAPLONG)
+//! 16. Checksum (/CS)
+//! 17. Export (/Xx)
+//!
+//! Note: /PB and /DP are not implemented (proprietary DLL-backed).
 
 mod error;
 mod execute;
