@@ -95,6 +95,8 @@ fn parse_number(s: &str) -> Result<u32, RangeError> {
         (2, bin)
     } else if let Some(bin) = s.strip_suffix('b').or_else(|| s.strip_suffix('B')) {
         (2, bin)
+    } else if let Some(hex) = s.strip_suffix('h').or_else(|| s.strip_suffix('H')) {
+        (16, hex)
     } else {
         (10, s)
     };
@@ -166,6 +168,13 @@ mod tests {
         let r: Range = "0x10.000-0x10.0FFF".parse().unwrap();
         assert_eq!(r.start(), 0x10000);
         assert_eq!(r.end(), 0x100FFF);
+    }
+
+    #[test]
+    fn test_parse_range_with_hex_suffix() {
+        let r: Range = "1000h-10FFh".parse().unwrap();
+        assert_eq!(r.start(), 0x1000);
+        assert_eq!(r.end(), 0x10FF);
     }
 
     #[test]

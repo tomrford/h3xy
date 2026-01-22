@@ -53,6 +53,8 @@ pub(super) fn parse_number(s: &str) -> Result<u32, ParseArgError> {
         (2, bin)
     } else if let Some(bin) = s.strip_suffix('b').or_else(|| s.strip_suffix('B')) {
         (2, bin)
+    } else if let Some(hex) = s.strip_suffix('h').or_else(|| s.strip_suffix('H')) {
+        (16, hex)
     } else if s.chars().all(|c| c.is_ascii_hexdigit()) && s.chars().any(|c| c.is_ascii_alphabetic())
     {
         (16, s)
@@ -357,6 +359,12 @@ mod tests {
     fn test_parse_number_with_dots() {
         assert_eq!(parse_number("0x10.0F").unwrap(), 0x100F);
         assert_eq!(parse_number("1.024").unwrap(), 1024);
+    }
+
+    #[test]
+    fn test_parse_number_with_hex_suffix() {
+        assert_eq!(parse_number("10h").unwrap(), 0x10);
+        assert_eq!(parse_number("0fH").unwrap(), 0x0F);
     }
 
     #[test]
