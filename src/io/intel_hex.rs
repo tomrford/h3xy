@@ -230,9 +230,17 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
 
             let mut should_emit =
                 current_extended != Some(needed_extended) || current_mode != Some(line_mode);
-            if auto_mode && line_mode == IntelHexMode::ExtendedSegment && addr <= 0xFFFF {
-                if current_mode.is_none() && current_extended.is_none() {
-                    should_emit = false;
+            if auto_mode && line_mode == IntelHexMode::ExtendedSegment {
+                if addr <= 0xFFFF {
+                    if current_mode.is_none() && current_extended.is_none() {
+                        should_emit = false;
+                    }
+                } else {
+                    let upper = (addr >> 16) as u16;
+                    let needed_segment = (upper << 12) as u16;
+                    if needed_extended != needed_segment {
+                        current_extended = Some(needed_segment);
+                    }
                 }
             }
 
