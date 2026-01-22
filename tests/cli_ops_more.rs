@@ -354,6 +354,46 @@ fn test_cli_auto_detect_binary_on_non_ascii() {
 }
 
 #[test]
+fn test_cli_auto_detect_ihex_after_blank_lines() {
+    let dir = temp_dir("cli_auto_ihex_blanks");
+    let input = dir.join("input.hex");
+    let out = dir.join("out.bin");
+    let data = b"\n\n:020000040000FA\n:020000000102FB\n:00000001FF\n";
+    write_file(&input, data);
+
+    let args = vec![
+        input.display().to_string(),
+        "/XN".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+    let output = run_h3xy(&args);
+    assert_success(&output);
+    let data = std::fs::read(&out).unwrap();
+    assert_eq!(data, vec![0x01, 0x02]);
+}
+
+#[test]
+fn test_cli_auto_detect_srec_after_blank_lines() {
+    let dir = temp_dir("cli_auto_srec_blanks");
+    let input = dir.join("input.s19");
+    let out = dir.join("out.bin");
+    let data = b"\n\nS10500000102F7\nS9030000FC\n";
+    write_file(&input, data);
+
+    let args = vec![
+        input.display().to_string(),
+        "/XN".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+    let output = run_h3xy(&args);
+    assert_success(&output);
+    let data = std::fs::read(&out).unwrap();
+    assert_eq!(data, vec![0x01, 0x02]);
+}
+
+#[test]
 fn test_cli_remap_basic() {
     let dir = temp_dir("cli_remap");
     let input = dir.join("input.hex");
