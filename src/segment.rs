@@ -20,7 +20,10 @@ impl Segment {
         if self.data.is_empty() {
             self.start_address
         } else {
-            self.start_address + self.data.len() as u32 - 1
+            self.start_address
+                .checked_add(self.data.len() as u32)
+                .and_then(|v| v.checked_sub(1))
+                .unwrap_or(u32::MAX)
         }
     }
 
@@ -33,11 +36,29 @@ impl Segment {
     }
 
     pub fn is_contiguous_with(&self, other: &Segment) -> bool {
-        self.end_address() + 1 == other.start_address
+        self.end_address().checked_add(1) == Some(other.start_address)
     }
 
     pub fn merge(&mut self, other: Segment) {
         debug_assert!(self.is_contiguous_with(&other));
         self.data.extend(other.data);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Segment;
+
+    #[test]
+    fn test_end_address_saturates_on_overflow() {
+        let seg = Segment::new(u32::MAX, vec![0xAA, 0xBB]);
+        assert_eq!(seg.end_address(), u32::MAX);
+    }
+
+    #[test]
+    fn test_is_contiguous_with_overflow_false() {
+        let seg = Segment::new(u32::MAX, vec![0xAA, 0xBB]);
+        let next = Segment::new(0, vec![0xCC]);
+        assert!(!seg.is_contiguous_with(&next));
     }
 }

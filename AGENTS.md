@@ -59,3 +59,63 @@ cargo run -- [args]   # Run CLI
 - Early returns with `let Some(x) = ... else { return }`
 - Use `.map_err()` for adding context to errors
 - `rayon` for parallelizable operations
+
+### Project memory
+- When uncertain about HexView behavior, consult the reference manual first; if the manual is silent, make a concrete choice and stick to it until validation tests prove otherwise.
+- HexView manual review: core CLI parity now includes S-Record + binary IO and `/XA` hex-ascii output; advanced OEM formats remain TBD.
+- CLI args parsing split into `src/bin/h3xy/args/` modules to keep files <500 LOC.
+- `/IN` + `/IA` explicit imports added; merge `/MT`/`/MO` now supports offsets (incl. negative) plus optional range and `+` chaining.
+- `/XSB` export now writes one binary per segment with address postfix; /XI and /XS parsing accepts hex values and requires reclinelen when rectype specified.
+- `/XC` C-array output implemented via INI (Prefix, WordSize, WordType, Decryption, Decryptvalue) with .c/.h generation and library support in `src/io/c_code.rs`.
+- `/P` INI path now parsed; `/XC` defaults to `<input>.ini` when `/P` not provided.
+- `/XF` Ford I-HEX output implemented using `[FORDHEADER]` INI (mandatory fields enforced, checksum auto-generated, optional erase sector list). Defaults output to `<input>.hex`.
+- `/XP` Porsche output implemented as single-region binary with 16-bit byte-sum appended (big-endian); gaps filled with `/AF` byte and output defaults to `<input>.bin`.
+- Core library tests expanded for merge range ordering, HEX-ASCII `0x` prefixes, binary gap filling, and S-Record auto type selection.
+- Align no longer requires power-of-two; aligns any non-zero value and normalizes overlaps before alignment (HexView behavior).
+- Added HexView multistage integration tests in `tests/hexview_multistage.rs` (fill/merge/align/checksum order).
+- CLI checksum parsing now supports forced ranges, limited ranges, excluded ranges, and /CSR little-endian output; @begin now overwrites start, and file target writes comma-separated hex bytes.
+- Added CLI end-to-end tests (`tests/cli_e2e.rs`) and checksum CLI coverage (`tests/cli_checksum.rs`) with helper utilities in `tests/common/mod.rs`.
+- Added CLI black-box tests for /FR, /CR, /AR, /AD + /AL + /AF, /MT, /MO (`tests/cli_ops.rs`) and output formats /XA, /XI, /XS, /XN, /XSB (`tests/cli_output.rs`).
+- CLI now supports /ADxx and /AFxx without separators (hex interpretation).
+- Added CLI tests for /MT+ /MO conflict, /XI auto mode selection, /XS reclinelen, /XA separator trailing check, and /XSB extension handling.
+- Added CLI tests for /AR start-end syntax, multi-range /CR in one arg, and /AF binary literal form.
+- Added CLI tests for /AF no-separator equivalence and /AD no-separator semantics vs /AD: decimal form.
+- Added CLI tests for /AF with '=' separator and /AD binary literal with separator.
+- Added CLI tests for /AR multiple ranges and /FR without /FP (random fill preserves existing data).
+- /FR without /FP now generates pseudo-random fill bytes (no new deps).
+- Added CLI tests for /E error log, /BHFCT /BTFST /BTBS thresholds, and a nested multi-op checksum chain.
+- /E now creates/truncates log file and records error message on failure.
+- Added remap support: `HexFile::remap(RemapOptions)` with CLI `/REMAP` parsing/execution and tests (library + CLI).
+- `/L` log command execution now supported (FileOpen/FileClose/FileNew) and `/V` writes version string to `/E` log; added CLI tests in `tests/cli_ops_more.rs`.
+- CLI now treats Unix absolute paths as positional input when they don't look like options (contains `/` after the first segment without `:`/`=`).
+- Added `/s12map` and `/s12xmap` support via banked mapping rules; CLI tests cover banked and non-banked ranges.
+- Segment policy chosen: overlaps allowed; ops document whether they normalize (last-wins) or operate on raw segments.
+- CLI parsing now supports `--` to force positional input (useful for absolute Unix paths).
+- Absolute `/path` input is accepted only if it exists on disk and no input file is set; otherwise parsed as options.
+- Added `HexFile::span_start`, `span_end`, and `as_contiguous(fill)` helpers with unit tests.
+- Ops errors now include more context (remap/map overflow details, swap segment address).
+- OpsError now supports `with_context`, used by flag helpers to tag `/MT`, `/MO`, `/AD/AL`, `/SWAP*`, `/REMAP`, `/S12*`, `/CS*`.
+- `OpsError::Context` wraps errors with option context for library flag helpers.
+- Checksum now uses checked add/sub for append/prepend/overwrite and reports overflow; new test added.
+- Added checksum underflow tests for prepend/overwrite.
+- Segment `end_address` now saturates on overflow.
+- Contiguity checks now use checked add to avoid overflow.
+- Added segment overflow tests for `end_address` and contiguity.
+- CLI output-format parsing now uses a helper to reduce duplicate checks.
+- Output format parsing now centralized via `parse_output_option` helper.
+- Range options (`/AR`, `/CR`, `/FR`, `/CDSPG`) now use shared `extend_ranges` helper.
+- Merge options (`/MO`, `/MT`) share `extend_merges`; no-separator hex parsing uses `parse_hex_no_sep`.
+- CLI input heuristic now uses `is_existing_abs_path` helper.
+- Simple no-value flags now centralized in `parse_simple_flag`.
+- Keyed option parsing now split into helpers (import/path/range/merge/numeric/checksum/dspic).
+
+### TODOs (current)
+- Review segment overflow policy (saturating `end_address` vs strict error) once validation suite runs.
+- Finish CLI parsing cleanup (table-driven for remaining non-output options).
+- Consider deeper ops error context inside core ops (beyond flag wrappers).
+
+### Project philosophy
+- CLI must be a drop-in HexView replacement for non-proprietary formats: binary-equivalent outputs for Intel HEX, S-Record, HEX ASCII, and raw binary.
+- Library API should mirror CLI options: one public function per CLI operation/flag, with semantics matching HexView.
+- CLI execution model should be explicit and linear: “for flag in flags, if present, call flag_function”, preserving HexView’s operation order and behavior.
+- The library should enable consumers to reproduce CLI behavior by composing these per-flag functions in the same order.

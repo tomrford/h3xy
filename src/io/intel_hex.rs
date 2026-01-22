@@ -114,7 +114,7 @@ pub fn parse_intel_hex(input: &[u8]) -> Result<HexFile, ParseError> {
                 }
 
                 match &mut current_segment {
-                    Some(seg) if seg.end_address() + 1 == full_address => {
+                    Some(seg) if seg.end_address().checked_add(1) == Some(full_address) => {
                         seg.data.extend_from_slice(data);
                     }
                     Some(seg) => {

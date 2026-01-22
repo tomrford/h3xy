@@ -4,7 +4,7 @@ use crate::{HexFile, Range, Segment};
 /// Options for fill operations.
 #[derive(Debug, Clone)]
 pub struct FillOptions {
-    /// Pattern to repeat (default: [0xFF])
+    /// Pattern to repeat (default: 0xFF)
     pub pattern: Vec<u8>,
     /// If true, overwrites existing data; if false, only fills gaps
     pub overwrite: bool,
@@ -89,7 +89,7 @@ impl HexFile {
         self.cut_ranges(&[range]);
     }
 
-    /// Remove data within multiple ranges.
+    /// Remove data within multiple ranges (operates on raw segments; preserves order).
     pub fn cut_ranges(&mut self, ranges: &[Range]) {
         for range in ranges {
             let mut new_segments = Vec::new();
@@ -129,7 +129,7 @@ impl HexFile {
         self.fill_ranges(&[range], options);
     }
 
-    /// Fill multiple regions with the specified pattern.
+    /// Fill multiple regions with the specified pattern (operates on raw segments).
     pub fn fill_ranges(&mut self, ranges: &[Range], options: &FillOptions) {
         if options.pattern.is_empty() {
             return;
@@ -155,7 +155,7 @@ impl HexFile {
     }
 
     /// Fill all gaps between first and last segment with fill byte.
-    /// Result: single contiguous segment.
+    /// Result: single contiguous segment (normalizes with last-wins).
     /// Returns silently if the span is too large (>= 4GiB).
     pub fn fill_gaps(&mut self, fill_byte: u8) {
         let normalized = self.normalized_lossy();
@@ -184,7 +184,7 @@ impl HexFile {
         self.set_segments(vec![Segment::new(min_addr, data)]);
     }
 
-    /// Merge another file into this one.
+    /// Merge another file into this one (operates on raw segments).
     pub fn merge(&mut self, other: &HexFile, options: &MergeOptions) -> Result<(), OpsError> {
         let mut other_filtered = other.clone();
 
@@ -576,6 +576,27 @@ mod tests {
         .unwrap();
         assert_eq!(hf1.segments().len(), 1);
         assert_eq!(hf1.segments()[0].start_address, 0x2000);
+    }
+
+    #[test]
+    fn test_merge_range_applies_before_offset() {
+        let mut base = HexFile::new();
+        let other = HexFile::with_segments(vec![Segment::new(0x1000, vec![0xAA; 4])]);
+
+        base.merge(
+            &other,
+            &MergeOptions {
+                mode: MergeMode::Overwrite,
+                offset: 0x1000,
+                range: Some(Range::from_start_end(0x1000, 0x1001).unwrap()),
+            },
+        )
+        .unwrap();
+
+        let norm = base.normalized_lossy();
+        assert_eq!(norm.segments().len(), 1);
+        assert_eq!(norm.segments()[0].start_address, 0x2000);
+        assert_eq!(norm.segments()[0].len(), 2);
     }
 
     #[test]

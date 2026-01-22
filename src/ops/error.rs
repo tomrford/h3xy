@@ -15,9 +15,30 @@ pub enum OpsError {
         operation: String,
     },
 
-    #[error("alignment must be a power of 2, got {0}")]
+    #[error("alignment must be non-zero, got {0}")]
     InvalidAlignment(u32),
 
     #[error("unsupported checksum algorithm index: {0}")]
     UnsupportedChecksumAlgorithm(u8),
+
+    #[error("invalid remap parameters: {0}")]
+    InvalidRemapParams(String),
+
+    #[error("{context}: {source}")]
+    Context {
+        context: String,
+        source: Box<OpsError>,
+    },
+}
+
+impl OpsError {
+    pub fn with_context(self, context: &str) -> Self {
+        match self {
+            OpsError::Context { .. } => self,
+            other => OpsError::Context {
+                context: context.to_string(),
+                source: Box::new(other),
+            },
+        }
+    }
 }

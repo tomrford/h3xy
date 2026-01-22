@@ -20,9 +20,11 @@ pub enum HexFileError {
 
 /// A collection of memory segments.
 ///
-/// Segments may overlap. Use `normalized()` or `normalized_lossy()` to resolve overlaps:
+/// Segments may overlap and preserve insertion order. Operations that iterate raw segments
+/// use this order, and overlaps are interpreted as "last wins" when normalized.
+/// Use `normalized()` or `normalized_lossy()` to resolve overlaps explicitly:
 /// - `normalized()` errors on overlap
-/// - `normalized_lossy()` uses "last wins" - later segments overwrite earlier ones
+/// - `normalized_lossy()` uses "last wins" (later segments overwrite earlier ones)
 ///
 /// Use `append_segment` for high-priority data (wins on overlap).
 /// Use `prepend_segment` for low-priority data (loses on overlap).
@@ -84,6 +86,16 @@ impl HexFile {
 
     pub fn max_address(&self) -> Option<u32> {
         self.segments.iter().map(|s| s.end_address()).max()
+    }
+
+    /// Span start across all segments (raw order).
+    pub fn span_start(&self) -> Option<u32> {
+        self.min_address()
+    }
+
+    /// Span end across all segments (raw order).
+    pub fn span_end(&self) -> Option<u32> {
+        self.max_address()
     }
 
     pub fn total_bytes(&self) -> usize {
@@ -163,8 +175,9 @@ impl HexFile {
     // --- Address-based access ---
 
     /// Read a single byte at address. Returns None if address is not covered by any segment.
+    /// If multiple segments overlap, the most recently added segment wins.
     pub fn read_byte(&self, addr: u32) -> Option<u8> {
-        for seg in &self.segments {
+        for seg in self.segments.iter().rev() {
             if addr >= seg.start_address && addr <= seg.end_address() {
                 let offset = (addr - seg.start_address) as usize;
                 return Some(seg.data[offset]);
@@ -196,6 +209,25 @@ impl HexFile {
         }
         self.segments.push(Segment::new(addr, data.to_vec()));
     }
+
+    /// Return a single contiguous segment spanning min..=max with gaps filled.
+    /// Uses a normalized (last-wins) snapshot. Returns None if empty or too large.
+    pub fn as_contiguous(&self, fill_byte: u8) -> Option<Segment> {
+        let normalized = self.normalized_lossy();
+        let min_addr = normalized.min_address()?;
+        let max_addr = normalized.max_address()?;
+        let span = (max_addr as u64) - (min_addr as u64) + 1;
+        if span > usize::MAX as u64 {
+            return None;
+        }
+        let total_len = span as usize;
+        let mut data = vec![fill_byte; total_len];
+        for segment in normalized.segments() {
+            let offset = (segment.start_address - min_addr) as usize;
+            data[offset..offset + segment.len()].copy_from_slice(&segment.data);
+        }
+        Some(Segment::new(min_addr, data))
+    }
 }
 
 fn segments_from_byte_map(byte_map: BTreeMap<u32, u8>) -> HexFile {
@@ -209,7 +241,7 @@ fn segments_from_byte_map(byte_map: BTreeMap<u32, u8>) -> HexFile {
     let mut current = Segment::new(first_addr, vec![first_byte]);
 
     for (addr, byte) in iter {
-        if current.end_address() + 1 == addr {
+        if current.end_address().checked_add(1) == Some(addr) {
             current.data.push(byte);
         } else {
             segments.push(current);
@@ -320,5 +352,26 @@ mod tests {
         assert_eq!(norm.segments[0].start_address, 0x100);
         assert_eq!(norm.segments[1].start_address, 0x200);
         assert_eq!(norm.segments[2].start_address, 0x300);
+    }
+
+    #[test]
+    fn test_as_contiguous_fills_gaps() {
+        let hf = HexFile::with_segments(vec![
+            Segment::new(0x100, vec![0xAA]),
+            Segment::new(0x102, vec![0xCC]),
+        ]);
+        let seg = hf.as_contiguous(0xFF).unwrap();
+        assert_eq!(seg.start_address, 0x100);
+        assert_eq!(seg.data, vec![0xAA, 0xFF, 0xCC]);
+    }
+
+    #[test]
+    fn test_span_start_end() {
+        let hf = HexFile::with_segments(vec![
+            Segment::new(0x300, vec![0x03]),
+            Segment::new(0x100, vec![0x01, 0x02]),
+        ]);
+        assert_eq!(hf.span_start(), Some(0x100));
+        assert_eq!(hf.span_end(), Some(0x300));
     }
 }

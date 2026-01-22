@@ -23,4 +23,7 @@ pub enum ParseError {
 
     #[error("unsupported record type at line {line}: {record_type:02X}")]
     UnsupportedRecordType { line: usize, record_type: u8 },
+
+    #[error("invalid output: {0}")]
+    InvalidOutput(String),
 }

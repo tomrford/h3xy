@@ -131,6 +131,12 @@ pub fn parse_ranges(s: &str) -> Result<Vec<Range>, RangeError> {
     s.split(':').map(|part| part.parse()).collect()
 }
 
+/// Parse multiple ranges, trimming optional surrounding quotes.
+pub fn parse_hexview_ranges(s: &str) -> Result<Vec<Range>, RangeError> {
+    let trimmed = s.trim_matches(|c| c == '"' || c == '\'');
+    parse_ranges(trimmed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -226,6 +232,14 @@ mod tests {
         assert_eq!(ranges[0].end(), 0x10FF);
         assert_eq!(ranges[1].start(), 0x2000);
         assert_eq!(ranges[1].end(), 0x2FFF);
+    }
+
+    #[test]
+    fn test_parse_hexview_ranges_quotes() {
+        let ranges = parse_hexview_ranges("'0x1000,0x100:0x2000-0x2FFF'").unwrap();
+        assert_eq!(ranges.len(), 2);
+        assert_eq!(ranges[0].start(), 0x1000);
+        assert_eq!(ranges[1].start(), 0x2000);
     }
 
     #[test]
