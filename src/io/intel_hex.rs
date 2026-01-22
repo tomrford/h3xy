@@ -204,38 +204,42 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
     let normalized = hexfile.normalized_lossy();
     let mut output = Vec::new();
     let bytes_per_line = options.bytes_per_line.max(1) as usize;
-    let max_addr = normalized.max_address().unwrap_or(0);
+    let auto_mode = matches!(options.mode, IntelHexMode::Auto);
+    let fixed_mode = if auto_mode { None } else { Some(options.mode) };
 
-    let mode = match options.mode {
-        IntelHexMode::Auto => {
-            if max_addr > 0xFFFFF {
-                IntelHexMode::ExtendedLinear
-            } else if max_addr > 0xFFFF {
-                IntelHexMode::ExtendedSegment
-            } else {
-                IntelHexMode::ExtendedLinear
-            }
-        }
-        m => m,
-    };
-
-    let emit_extended = !(matches!(options.mode, IntelHexMode::Auto) && max_addr <= 0xFFFF);
-    let mut current_extended: Option<u16> = if emit_extended { None } else { Some(0) };
+    let mut current_extended: Option<u16> = None;
+    let mut current_mode: Option<IntelHexMode> = fixed_mode;
 
     for segment in normalized.segments() {
         let mut addr = segment.start_address;
         let mut data_offset = 0;
 
         while data_offset < segment.len() {
-            let needed_extended = match mode {
+            let line_mode = if let Some(mode) = fixed_mode {
+                mode
+            } else if addr > 0xFFFFF {
+                IntelHexMode::ExtendedLinear
+            } else {
+                IntelHexMode::ExtendedSegment
+            };
+            let needed_extended = match line_mode {
                 IntelHexMode::ExtendedLinear => (addr >> 16) as u16,
                 IntelHexMode::ExtendedSegment => ((addr >> 4) & 0xF000) as u16,
                 IntelHexMode::Auto => unreachable!(),
             };
 
-            if emit_extended && current_extended != Some(needed_extended) {
+            let mut should_emit =
+                current_extended != Some(needed_extended) || current_mode != Some(line_mode);
+            if auto_mode && line_mode == IntelHexMode::ExtendedSegment && addr <= 0xFFFF {
+                if current_mode.is_none() && current_extended.is_none() {
+                    should_emit = false;
+                }
+            }
+
+            if should_emit {
                 current_extended = Some(needed_extended);
-                let record_type = match mode {
+                current_mode = Some(line_mode);
+                let record_type = match line_mode {
                     IntelHexMode::ExtendedLinear => RECORD_EXTENDED_LINEAR,
                     IntelHexMode::ExtendedSegment => RECORD_EXTENDED_SEGMENT,
                     IntelHexMode::Auto => unreachable!(),
@@ -243,11 +247,7 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
                 write_record(&mut output, record_type, 0, &needed_extended.to_be_bytes());
             }
 
-            let offset_addr = match mode {
-                IntelHexMode::ExtendedLinear => (addr & 0xFFFF) as u16,
-                IntelHexMode::ExtendedSegment => (addr & 0xFFFF) as u16,
-                IntelHexMode::Auto => unreachable!(),
-            };
+            let offset_addr = (addr & 0xFFFF) as u16;
 
             let remaining_in_bank = 0x10000u32.saturating_sub(offset_addr as u32) as usize;
             let remaining_data = segment.len() - data_offset;
@@ -430,5 +430,17 @@ mod tests {
         let text = String::from_utf8(output).unwrap();
         assert!(text.contains(":0401000000010203F5"));
         assert!(text.contains(":00000001FF"));
+    }
+
+    #[test]
+    fn test_write_auto_mixed_modes() {
+        let hf = HexFile::with_segments(vec![
+            Segment::new(0x12000, vec![0xAA]),
+            Segment::new(0x120000, vec![0xBB]),
+        ]);
+        let output = write_intel_hex(&hf, &IntelHexWriteOptions::default());
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(":02000002")); // extended segment
+        assert!(text.contains(":02000004")); // extended linear
     }
 }
