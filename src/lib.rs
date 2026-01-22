@@ -12,7 +12,10 @@ pub use io::{
     SRecordType, SRecordWriteOptions, parse_binary, parse_hex_ascii, parse_srec, write_binary,
     write_c_code, write_hex_ascii, write_srec,
 };
-pub use io::{IntelHexMode, IntelHexWriteOptions, ParseError, parse_intel_hex, write_intel_hex};
+pub use io::{
+    IntelHexMode, IntelHexWriteOptions, ParseError, parse_intel_hex, parse_intel_hex_16bit,
+    write_intel_hex,
+};
 pub use ops::{
     AlignOptions, BankedMapOptions, ChecksumAlgorithm, ChecksumOptions, ChecksumTarget,
     FillOptions, ForcedRange, LogCommand, LogCommandKind, LogError, MergeMode, MergeOptions,

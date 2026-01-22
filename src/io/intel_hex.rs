@@ -178,6 +178,26 @@ pub fn parse_intel_hex(input: &[u8]) -> Result<HexFile, ParseError> {
     Ok(HexFile::with_segments(segments))
 }
 
+pub fn parse_intel_hex_16bit(input: &[u8]) -> Result<HexFile, ParseError> {
+    let hexfile = parse_intel_hex(input)?;
+    let mut segments = Vec::with_capacity(hexfile.segments().len());
+
+    for seg in hexfile.segments() {
+        let start = seg
+            .start_address
+            .checked_mul(2)
+            .ok_or_else(|| ParseError::AddressOverflow("16-bit address overflow".to_string()))?;
+        if !seg.data.is_empty() {
+            start
+                .checked_add(seg.data.len() as u32 - 1)
+                .ok_or_else(|| ParseError::AddressOverflow("16-bit address overflow".to_string()))?;
+        }
+        segments.push(Segment::new(start, seg.data.clone()));
+    }
+
+    Ok(HexFile::with_segments(segments))
+}
+
 pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec<u8> {
     let normalized = hexfile.normalized_lossy();
     let mut output = Vec::new();
@@ -354,6 +374,22 @@ mod tests {
         let hf = parse_intel_hex(input).unwrap();
         assert_eq!(hf.segments().len(), 1);
         assert_eq!(hf.segments()[0].start_address, 0x00010000);
+    }
+
+    #[test]
+    fn test_parse_16bit_addresses_scaled() {
+        let input = b":02000100AABB98\n:00000001FF\n";
+        let hf = parse_intel_hex_16bit(input).unwrap();
+        assert_eq!(hf.segments().len(), 1);
+        assert_eq!(hf.segments()[0].start_address, 0x0002);
+        assert_eq!(hf.segments()[0].data, vec![0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn test_parse_16bit_overflow() {
+        let input = b":0200000480007A\n:01000000AA55\n:00000001FF\n";
+        let result = parse_intel_hex_16bit(input);
+        assert!(matches!(result, Err(ParseError::AddressOverflow(_))));
     }
 
     #[test]

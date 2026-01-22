@@ -200,6 +200,28 @@ fn test_cli_version_string_written_to_error_log() {
 }
 
 #[test]
+fn test_cli_import_i16_scales_addresses() {
+    let dir = temp_dir("cli_i16_import");
+    let input = dir.join("input.hex");
+    let out = dir.join("out.hex");
+    let hex = b":02000100AABB98\n:00000001FF\n";
+    write_file(&input, hex);
+
+    let args = vec![
+        format!("/II2={}", input.display()),
+        "/XI".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+
+    let hexfile = run_hex_output(args, &out);
+    let norm = hexfile.normalized_lossy();
+    assert_eq!(norm.segments().len(), 1);
+    assert_eq!(norm.segments()[0].start_address, 0x0002);
+    assert_eq!(norm.segments()[0].data, vec![0xAA, 0xBB]);
+}
+
+#[test]
 fn test_cli_remap_basic() {
     let dir = temp_dir("cli_remap");
     let input = dir.join("input.hex");

@@ -19,11 +19,6 @@ impl Args {
                 "cannot combine /MT and /MO in one command".into(),
             ));
         }
-        if self.import_i16.is_some() {
-            return Err(CliError::Unsupported(
-                "16-bit Intel HEX import (/II2) is not supported yet".into(),
-            ));
-        }
         if self.s08_map {
             return Err(CliError::Unsupported(
                 "S08 address mapping is not supported yet".into(),
@@ -69,11 +64,20 @@ impl Args {
                 "binary import (/IN) cannot be combined with HEX ASCII import (/IA)".into(),
             ));
         }
-        if (self.import_binary.is_some() || self.import_hex_ascii.is_some())
+        if self.import_i16.is_some()
+            && (self.import_binary.is_some() || self.import_hex_ascii.is_some())
+        {
+            return Err(CliError::Unsupported(
+                "16-bit Intel HEX import (/II2) cannot be combined with /IN or /IA".into(),
+            ));
+        }
+        if (self.import_binary.is_some()
+            || self.import_hex_ascii.is_some()
+            || self.import_i16.is_some())
             && self.input_file.is_some()
         {
             return Err(CliError::Unsupported(
-                "explicit import (/IN, /IA) cannot be combined with input file".into(),
+                "explicit import (/IN, /IA, /II2) cannot be combined with input file".into(),
             ));
         }
         Ok(())
@@ -106,6 +110,9 @@ impl Args {
         }
         if let Some(ref import) = self.import_hex_ascii {
             return super::io::load_hex_ascii_input(&import.file, import.offset);
+        }
+        if let Some(ref import) = self.import_i16 {
+            return super::io::load_intel_hex_16bit_input(import);
         }
         if let Some(ref path) = self.input_file {
             return load_input(path);

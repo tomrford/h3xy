@@ -41,6 +41,12 @@ pub(super) fn load_hex_ascii_input(path: &PathBuf, offset: u32) -> Result<HexFil
     Ok(hexfile)
 }
 
+pub(super) fn load_intel_hex_16bit_input(path: &PathBuf) -> Result<HexFile, CliError> {
+    let content = std::fs::read(path)?;
+    let hexfile = h3xy::parse_intel_hex_16bit(&content)?;
+    Ok(hexfile)
+}
+
 pub(super) fn write_output(
     hexfile: &HexFile,
     path: &PathBuf,

@@ -62,6 +62,7 @@ cargo run -- [args]   # Run CLI
 
 ### Project memory
 - When uncertain about HexView behavior, consult the reference manual first; if the manual is silent, make a concrete choice and stick to it until validation tests prove otherwise.
+- First pass parity excludes proprietary/OEM formats; validation suite should not include those cases.
 - HexView manual review: core CLI parity now includes S-Record + binary IO and `/XA` hex-ascii output; advanced OEM formats remain TBD.
 - CLI args parsing split into `src/bin/h3xy/args/` modules to keep files <500 LOC.
 - `/IN` + `/IA` explicit imports added; merge `/MT`/`/MO` now supports offsets (incl. negative) plus optional range and `+` chaining.
@@ -108,6 +109,10 @@ cargo run -- [args]   # Run CLI
 - CLI input heuristic now uses `is_existing_abs_path` helper.
 - Simple no-value flags now centralized in `parse_simple_flag`.
 - Keyed option parsing now split into helpers (import/path/range/merge/numeric/checksum/dspic).
+- /II2 (16-bit Intel HEX import) now supported (address*2).
+- Validation suite requires setup not on this machine.
+- Mint (github.com/fordtom/mint) uses dedicated export crates; consider reuse here to avoid hand-rolled format code.
+- Possible crates to evaluate for reuse: `ihex`, `intelhex`, `srec`, `srec_rs`, `srex` (health check needed; `ihex` appears stale).
 
 ### TODOs (current)
 - Review segment overflow policy (saturating `end_address` vs strict error) once validation suite runs.
