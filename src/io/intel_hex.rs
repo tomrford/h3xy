@@ -204,12 +204,13 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
     let normalized = hexfile.normalized_lossy();
     let mut output = Vec::new();
     let bytes_per_line = options.bytes_per_line.max(1) as usize;
+    let max_addr = normalized.max_address().unwrap_or(0);
 
     let mode = match options.mode {
         IntelHexMode::Auto => {
-            if normalized.max_address().unwrap_or(0) > 0xFFFFF {
+            if max_addr > 0xFFFFF {
                 IntelHexMode::ExtendedLinear
-            } else if normalized.max_address().unwrap_or(0) > 0xFFFF {
+            } else if max_addr > 0xFFFF {
                 IntelHexMode::ExtendedSegment
             } else {
                 IntelHexMode::ExtendedLinear
@@ -218,7 +219,8 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
         m => m,
     };
 
-    let mut current_extended: Option<u16> = None;
+    let emit_extended = !(matches!(options.mode, IntelHexMode::Auto) && max_addr <= 0xFFFF);
+    let mut current_extended: Option<u16> = if emit_extended { None } else { Some(0) };
 
     for segment in normalized.segments() {
         let mut addr = segment.start_address;
@@ -231,7 +233,7 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
                 IntelHexMode::Auto => unreachable!(),
             };
 
-            if current_extended != Some(needed_extended) {
+            if emit_extended && current_extended != Some(needed_extended) {
                 current_extended = Some(needed_extended);
                 let record_type = match mode {
                     IntelHexMode::ExtendedLinear => RECORD_EXTENDED_LINEAR,
@@ -426,7 +428,6 @@ mod tests {
         let hf = HexFile::with_segments(vec![Segment::new(0x0100, vec![0x00, 0x01, 0x02, 0x03])]);
         let output = write_intel_hex(&hf, &IntelHexWriteOptions::default());
         let text = String::from_utf8(output).unwrap();
-        assert!(text.contains(":020000040000FA"));
         assert!(text.contains(":0401000000010203F5"));
         assert!(text.contains(":00000001FF"));
     }
