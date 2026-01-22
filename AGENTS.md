@@ -117,6 +117,7 @@ cargo run -- [args]   # Run CLI
 - `/S08MAP` now implemented (also accepts `/S08`): 0x4000-0x7FFF -> 0x104000; banked 0xXX.8000-0xXX.BFFF -> 0x100000 + bank*0x4000 + offset; other ranges unchanged (verify).
 - `/DP` and `/PB` depend on vendor DLLs (EXPDATPROC/PBUILD) and are proprietary; exclude from first-pass validation.
 - dsPIC ops implemented: `/CDSPX` appends two zero bytes per 2 bytes (target defaults to start*2); `/CDSPS` keeps lower two bytes per 4 bytes (target defaults to start/2); `/CDSPG` clears every 4th byte. Byte ordering assumed; validate.
+- Number parsing now tolerates `.` or `_` separators in numeric literals (addresses/ranges).
 
 ### TODOs (current)
 - Review segment overflow policy (saturating `end_address` vs strict error) once validation suite runs.

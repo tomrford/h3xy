@@ -99,7 +99,11 @@ fn parse_number(s: &str) -> Result<u32, RangeError> {
         (10, s)
     };
 
-    u32::from_str_radix(digits, radix).map_err(|e| RangeError::InvalidNumber(e.to_string()))
+    let cleaned: String = digits.chars().filter(|c| *c != '.' && *c != '_').collect();
+    if cleaned.is_empty() {
+        return Err(RangeError::InvalidNumber("empty".to_string()));
+    }
+    u32::from_str_radix(&cleaned, radix).map_err(|e| RangeError::InvalidNumber(e.to_string()))
 }
 
 impl FromStr for Range {
@@ -155,6 +159,13 @@ mod tests {
         assert_eq!(r.start(), 0x1000);
         assert_eq!(r.end(), 0x11FF);
         assert_eq!(r.length(), 0x200);
+    }
+
+    #[test]
+    fn test_parse_range_with_dots() {
+        let r: Range = "0x10.000-0x10.0FFF".parse().unwrap();
+        assert_eq!(r.start(), 0x10000);
+        assert_eq!(r.end(), 0x100FFF);
     }
 
     #[test]

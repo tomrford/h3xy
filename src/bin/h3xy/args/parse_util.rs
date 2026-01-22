@@ -60,7 +60,12 @@ pub(super) fn parse_number(s: &str) -> Result<u32, ParseArgError> {
         (10, s)
     };
 
-    u32::from_str_radix(digits, radix).map_err(|e| ParseArgError::InvalidNumber(e.to_string()))
+    let cleaned: String = digits.chars().filter(|c| *c != '.' && *c != '_').collect();
+    if cleaned.is_empty() {
+        return Err(ParseArgError::InvalidNumber("empty".to_string()));
+    }
+
+    u32::from_str_radix(&cleaned, radix).map_err(|e| ParseArgError::InvalidNumber(e.to_string()))
 }
 
 pub(super) fn parse_signed_number(s: &str) -> Result<i64, ParseArgError> {
@@ -346,6 +351,12 @@ mod tests {
     fn test_parse_signed_number_negative_hex() {
         assert_eq!(parse_signed_number("-0x10").unwrap(), -16);
         assert_eq!(parse_signed_number("0x10").unwrap(), 16);
+    }
+
+    #[test]
+    fn test_parse_number_with_dots() {
+        assert_eq!(parse_number("0x10.0F").unwrap(), 0x100F);
+        assert_eq!(parse_number("1.024").unwrap(), 1024);
     }
 
     #[test]
