@@ -402,6 +402,28 @@ fn test_cli_binary_and_separate_binary() {
 }
 
 #[test]
+fn test_cli_binary_order_of_appearance() {
+    let dir = temp_dir("cli_xn_order");
+    let base = dir.join("base.bin");
+    let merge = dir.join("merge.bin");
+    let out = dir.join("out.bin");
+    write_file(&base, &[0x01]);
+    write_file(&merge, &[0x02]);
+
+    let args = vec![
+        format!("/IN:{};0x2000", base.display()),
+        format!("/MO:{};0x1000", merge.display()),
+        "/XN".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+    let output = run_h3xy(&args);
+    assert_success(&output);
+    let data = std::fs::read(&out).unwrap();
+    assert_eq!(data, vec![0x01, 0x02]);
+}
+
+#[test]
 fn test_cli_output_option_exclusive() {
     let dir = temp_dir("cli_xx_excl");
     let input = dir.join("input.bin");

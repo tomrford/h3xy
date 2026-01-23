@@ -4,7 +4,7 @@ use crate::{HexFile, Segment};
 #[derive(Debug, Clone, Default)]
 pub struct BinaryWriteOptions {
     /// If set, fills gaps between min/max addresses with this byte.
-    /// If None, segments are concatenated in address order.
+    /// If None, segments are concatenated in order of appearance.
     pub fill_gaps: Option<u8>,
 }
 
@@ -36,14 +36,12 @@ pub fn parse_binary(data: &[u8], base_address: u32) -> Result<HexFile, ParseErro
 
 /// Write the HexFile to a binary blob.
 pub fn write_binary(hexfile: &HexFile, options: &BinaryWriteOptions) -> Vec<u8> {
-    let normalized = hexfile.normalized_lossy();
-
-    if normalized.segments().is_empty() {
+    if hexfile.segments().is_empty() {
         return Vec::new();
     }
 
     if let Some(fill) = options.fill_gaps {
-        let mut filled = normalized.clone();
+        let mut filled = hexfile.normalized_lossy();
         filled.fill_gaps(fill);
         if let Some(segment) = filled.segments().first() {
             return segment.data.clone();
@@ -51,9 +49,7 @@ pub fn write_binary(hexfile: &HexFile, options: &BinaryWriteOptions) -> Vec<u8> 
         return Vec::new();
     }
 
-    let mut segments = normalized.into_segments();
-    segments.sort_by_key(|s| s.start_address);
-
+    let segments = hexfile.segments();
     let total_len: usize = segments.iter().map(|s| s.len()).sum();
     let mut out = Vec::with_capacity(total_len);
     for segment in segments {
@@ -83,13 +79,13 @@ mod tests {
     }
 
     #[test]
-    fn test_write_binary_linear() {
+    fn test_write_binary_order_of_appearance() {
         let hexfile = HexFile::with_segments(vec![
             Segment::new(0x2000, vec![0x01, 0x02]),
             Segment::new(0x1000, vec![0xAA]),
         ]);
         let out = write_binary(&hexfile, &BinaryWriteOptions::default());
-        assert_eq!(out, vec![0xAA, 0x01, 0x02]);
+        assert_eq!(out, vec![0x01, 0x02, 0xAA]);
     }
 
     #[test]
