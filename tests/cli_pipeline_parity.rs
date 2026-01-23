@@ -2,8 +2,8 @@ mod common;
 
 use common::{assert_success, run_h3xy, temp_dir, write_file};
 use h3xy::{
-    AlignOptions, BinaryWriteOptions, IntelHexWriteOptions, Pipeline, PipelineMerge, Range,
-    parse_binary, write_binary, write_intel_hex,
+    AlignOptions, BinaryWriteOptions, ChecksumAlgorithm, ChecksumTarget, IntelHexWriteOptions,
+    Pipeline, PipelineMerge, Range, parse_binary, write_binary, write_intel_hex,
 };
 
 #[test]
@@ -100,6 +100,44 @@ fn test_cli_pipeline_parity_binary_order() {
 
     let result = pipeline.execute_without_log(|range| vec![0; range.length() as usize]).unwrap();
     let lib_bytes = write_binary(&result.hexfile, &BinaryWriteOptions::default());
+
+    assert_eq!(cli_bytes, lib_bytes);
+}
+
+#[test]
+fn test_cli_checksum_parity_begin() {
+    let dir = temp_dir("cli_pipeline_parity_cs");
+    let base = dir.join("base.bin");
+    let out_cli = dir.join("out.hex");
+
+    write_file(&base, &[0x01, 0x02, 0x03, 0x04]);
+
+    let args = vec![
+        format!("/IN:{};0x1000", base.display()),
+        "/CS0:@BEGIN".to_string(),
+        "/XI".to_string(),
+        "-o".to_string(),
+        out_cli.display().to_string(),
+    ];
+
+    let output = run_h3xy(&args);
+    assert_success(&output);
+    let cli_bytes = std::fs::read(&out_cli).unwrap();
+
+    let mut hexfile = parse_binary(&[0x01, 0x02, 0x03, 0x04], 0x1000).unwrap();
+    let start = hexfile.min_address().unwrap();
+    let algorithm = ChecksumAlgorithm::from_index(0).unwrap();
+    let _ = h3xy::flag_checksum(
+        &mut hexfile,
+        algorithm,
+        None,
+        false,
+        None,
+        &[],
+        &ChecksumTarget::Address(start),
+    )
+    .unwrap();
+    let lib_bytes = write_intel_hex(&hexfile, &IntelHexWriteOptions::default());
 
     assert_eq!(cli_bytes, lib_bytes);
 }
