@@ -126,7 +126,7 @@ cargo run -- [args]   # Run CLI
 - Intel-HEX auto output now omits extended records when max address <= 0xFFFF.
 - CLI auto-detect now scans up to first 25 non-empty lines for ASCII; if any non-ASCII, treat as binary input (manual behavior).
 - S-Record parsing accepts lowercase 's' prefix; CLI auto-detect recognizes it too.
-- HEX-ASCII import overlap now warns (stderr) and ignores input file, per manual.
+- HEX-ASCII import overlap now warns (stderr) and ignores input file, per manual; we still allow /IA + input when non-overlapping (assumption).
 
 ### TODOs (current)
 - Review segment overflow policy (saturating `end_address` vs strict error) once validation suite runs.
