@@ -1,4 +1,4 @@
-use super::ParseError;
+use super::{ParseError, normalized_sorted_segments};
 use crate::{HexFile, Segment};
 
 const RECORD_DATA: u8 = 0x00;
@@ -204,7 +204,7 @@ pub fn parse_intel_hex_16bit(input: &[u8]) -> Result<HexFile, ParseError> {
 
 /// Write Intel-HEX output. CLI: /XI.
 pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec<u8> {
-    let normalized = hexfile.normalized_lossy();
+    let segments = normalized_sorted_segments(hexfile);
     let mut output = Vec::new();
     let bytes_per_line = if options.bytes_per_line == 0 {
         16
@@ -217,7 +217,7 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
     let mut current_extended: Option<u16> = None;
     let mut current_mode: Option<IntelHexMode> = fixed_mode;
 
-    for segment in normalized.segments() {
+    for segment in segments {
         let mut addr = segment.start_address;
         let mut data_offset = 0;
 

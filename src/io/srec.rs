@@ -1,4 +1,4 @@
-use crate::io::ParseError;
+use crate::io::{ParseError, normalized_sorted_segments};
 use crate::{HexFile, Segment};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,8 +166,7 @@ pub fn write_srec(hexfile: &HexFile, options: &SRecordWriteOptions) -> Result<Ve
         options.bytes_per_line
     } as usize;
 
-    let mut segments = normalized.into_segments();
-    segments.sort_by_key(|s| s.start_address);
+    let segments = normalized_sorted_segments(&normalized);
 
     let mut out = Vec::new();
     let (addr_len, record_digit) = match record_type {

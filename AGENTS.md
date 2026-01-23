@@ -134,6 +134,7 @@ cargo run -- [args]   # Run CLI
 - Review segment overflow policy (saturating `end_address` vs strict error) once validation suite runs.
 - Finish CLI parsing cleanup (table-driven for remaining non-output options).
 - Consider deeper ops error context inside core ops (beyond flag wrappers).
+- Crate reuse decision: keep hand-rolled Intel-HEX/S-Record/HEX-ASCII writers/parsers for parity; `bin_file` (used in mint) remains a candidate once validation suite proves equivalence.
 
 ### Project philosophy
 - CLI must be a drop-in HexView replacement for non-proprietary formats: binary-equivalent outputs for Intel HEX, S-Record, HEX ASCII, and raw binary.

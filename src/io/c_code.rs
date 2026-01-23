@@ -1,4 +1,4 @@
-use crate::io::ParseError;
+use crate::io::{ParseError, normalized_sorted_segments};
 use crate::{HexFile, Segment};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,8 +40,7 @@ pub fn write_c_code(
         }
     };
 
-    let mut segments = hexfile.normalized_lossy().into_segments();
-    segments.sort_by_key(|s| s.start_address);
+    let segments = normalized_sorted_segments(hexfile);
 
     let prefix = options.prefix.trim();
     if prefix.is_empty() {

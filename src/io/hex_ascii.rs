@@ -1,4 +1,4 @@
-use crate::io::ParseError;
+use crate::io::{ParseError, normalized_sorted_segments};
 use crate::{HexFile, Segment};
 
 #[derive(Debug, Clone)]
@@ -87,8 +87,7 @@ pub fn parse_hex_ascii(data: &[u8], base_address: u32) -> Result<HexFile, ParseE
 
 /// Write the HexFile to HEX ASCII bytes. CLI: /XA.
 pub fn write_hex_ascii(hexfile: &HexFile, options: &HexAsciiWriteOptions) -> Vec<u8> {
-    let mut segments = hexfile.normalized_lossy().into_segments();
-    segments.sort_by_key(|s| s.start_address);
+    let segments = normalized_sorted_segments(hexfile);
 
     let mut out = Vec::new();
     let mut line_len = options.line_length;
