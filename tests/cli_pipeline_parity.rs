@@ -2,8 +2,8 @@ mod common;
 
 use common::{assert_success, run_h3xy, temp_dir, write_file};
 use h3xy::{
-    AlignOptions, IntelHexWriteOptions, Pipeline, PipelineMerge, Range, parse_binary,
-    write_intel_hex,
+    AlignOptions, BinaryWriteOptions, IntelHexWriteOptions, Pipeline, PipelineMerge, Range,
+    parse_binary, write_binary, write_intel_hex,
 };
 
 #[test]
@@ -61,6 +61,45 @@ fn test_cli_pipeline_parity_basic_chain() {
 
     let result = pipeline.execute_without_log(|range| vec![0; range.length() as usize]).unwrap();
     let lib_bytes = write_intel_hex(&result.hexfile, &IntelHexWriteOptions::default());
+
+    assert_eq!(cli_bytes, lib_bytes);
+}
+
+#[test]
+fn test_cli_pipeline_parity_binary_order() {
+    let dir = temp_dir("cli_pipeline_parity_xn");
+    let base = dir.join("base.bin");
+    let merge = dir.join("merge.bin");
+    let out_cli = dir.join("out.bin");
+
+    write_file(&base, &[0x01, 0x02]);
+    write_file(&merge, &[0xAA, 0xBB]);
+
+    let args = vec![
+        format!("/IN:{};0x2000", base.display()),
+        format!("/MT:{};0x1000", merge.display()),
+        "/XN".to_string(),
+        "-o".to_string(),
+        out_cli.display().to_string(),
+    ];
+
+    let output = run_h3xy(&args);
+    assert_success(&output);
+    let cli_bytes = std::fs::read(&out_cli).unwrap();
+
+    let base_hex = parse_binary(&[0x01, 0x02], 0x2000).unwrap();
+    let merge_hex = parse_binary(&[0xAA, 0xBB], 0).unwrap();
+
+    let mut pipeline = Pipeline::default();
+    pipeline.hexfile = base_hex;
+    pipeline.merge_transparent = vec![PipelineMerge {
+        other: merge_hex,
+        offset: 0x1000,
+        range: None,
+    }];
+
+    let result = pipeline.execute_without_log(|range| vec![0; range.length() as usize]).unwrap();
+    let lib_bytes = write_binary(&result.hexfile, &BinaryWriteOptions::default());
 
     assert_eq!(cli_bytes, lib_bytes);
 }
