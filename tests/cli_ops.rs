@@ -1,14 +1,6 @@
 mod common;
 
-use common::{assert_success, run_h3xy, temp_dir, write_file};
-use h3xy::parse_intel_hex;
-
-fn run_hex_output(args: Vec<String>, out_path: &std::path::Path) -> h3xy::HexFile {
-    let output = run_h3xy(&args);
-    assert_success(&output);
-    let data = std::fs::read(out_path).unwrap();
-    parse_intel_hex(&data).unwrap()
-}
+use common::{assert_success, run_h3xy, run_hex_output, temp_dir, write_file};
 
 #[test]
 fn test_cli_align_length_fill() {
