@@ -121,6 +121,7 @@ cargo run -- [args]   # Run CLI
 - Number parsing now tolerates `.` or `_` separators in numeric literals (addresses/ranges).
 - Number parsing now accepts trailing `h`/`H` for hex literals.
 - Number parsing now strips common C-style suffixes (`u`, `l`, `ul`) on numeric literals.
+- Intel-HEX `/XI:0` now defaults to 16 bytes per line (assumption; aligns with S-Record behavior).
 - Added range parser parity tests (`tests/hexview_ranges.rs`) for common HexView range formats.
 - HEX ASCII import now token-based: accepts 1 or 2 hex-digit tokens, supports 0x prefix, contiguous pairs, and treats non-hex as separators.
 - Intel-HEX auto output now omits extended records when max address <= 0xFFFF.

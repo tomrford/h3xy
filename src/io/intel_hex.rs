@@ -203,7 +203,11 @@ pub fn parse_intel_hex_16bit(input: &[u8]) -> Result<HexFile, ParseError> {
 pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec<u8> {
     let normalized = hexfile.normalized_lossy();
     let mut output = Vec::new();
-    let bytes_per_line = options.bytes_per_line.max(1) as usize;
+    let bytes_per_line = if options.bytes_per_line == 0 {
+        16
+    } else {
+        options.bytes_per_line
+    } as usize;
     let auto_mode = matches!(options.mode, IntelHexMode::Auto);
     let fixed_mode = if auto_mode { None } else { Some(options.mode) };
 

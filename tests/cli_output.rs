@@ -134,6 +134,36 @@ fn test_cli_intel_hex_reclen() {
 }
 
 #[test]
+fn test_cli_intel_hex_reclen_zero_defaults() {
+    let dir = temp_dir("cli_xi_reclen_zero");
+    let input = dir.join("input.bin");
+    let out = dir.join("out.hex");
+    let data: Vec<u8> = (0u8..20).collect();
+    write_file(&input, &data);
+
+    let args = vec![
+        format!("/IN:{};0x0", input.display()),
+        "/XI:0".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+    let output = run_h3xy(&args);
+    assert_success(&output);
+
+    let lines = read_nonempty_lines(&out);
+    for line in lines {
+        if line.starts_with(':') && line.len() >= 11 {
+            let count = u8::from_str_radix(&line[1..3], 16).unwrap();
+            let rectype = &line[7..9];
+            if rectype == "00" {
+                assert_eq!(count, 0x10);
+                break;
+            }
+        }
+    }
+}
+
+#[test]
 fn test_cli_intel_hex_forced_modes() {
     let dir = temp_dir("cli_xi_modes");
     let input = dir.join("input.bin");
