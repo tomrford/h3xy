@@ -320,6 +320,40 @@ fn test_cli_srec_reclen() {
 }
 
 #[test]
+fn test_cli_srec_rectype_requires_reclen() {
+    let dir = temp_dir("cli_xs_rectype_reclen");
+    let input = dir.join("input.bin");
+    let out = dir.join("out.s19");
+    write_file(&input, &[0xAA, 0xBB]);
+
+    let args = vec![
+        format!("/IN:{};0x0100", input.display()),
+        "/XS::2".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+    let output = run_h3xy(&args);
+    assert!(!output.status.success());
+}
+
+#[test]
+fn test_cli_intel_hex_rectype_requires_reclen() {
+    let dir = temp_dir("cli_xi_rectype_reclen");
+    let input = dir.join("input.bin");
+    let out = dir.join("out.hex");
+    write_file(&input, &[0xAA, 0xBB]);
+
+    let args = vec![
+        format!("/IN:{};0x0100", input.display()),
+        "/XI::2".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+    let output = run_h3xy(&args);
+    assert!(!output.status.success());
+}
+
+#[test]
 fn test_cli_srec_reclen_zero_defaults() {
     let dir = temp_dir("cli_xs_reclen_zero");
     let input = dir.join("input.bin");
