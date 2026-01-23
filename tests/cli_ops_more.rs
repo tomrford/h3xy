@@ -395,6 +395,31 @@ fn test_cli_auto_detect_ihex_after_blank_lines() {
 }
 
 #[test]
+fn test_cli_auto_detect_ignores_ihex_after_25_lines() {
+    let dir = temp_dir("cli_auto_ihex_after_25");
+    let input = dir.join("input.txt");
+    let out = dir.join("out.bin");
+    let mut content = String::new();
+    for _ in 0..25 {
+        content.push_str("HELLO\n");
+    }
+    content.push_str(":00000001FF\n");
+    write_file(&input, content.as_bytes());
+
+    let args = vec![
+        input.display().to_string(),
+        "/XN".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+
+    let output = run_h3xy(&args);
+    assert_success(&output);
+    let written = std::fs::read(&out).unwrap();
+    assert_eq!(written, content.as_bytes());
+}
+
+#[test]
 fn test_cli_auto_detect_srec_after_blank_lines() {
     let dir = temp_dir("cli_auto_srec_blanks");
     let input = dir.join("input.s19");
