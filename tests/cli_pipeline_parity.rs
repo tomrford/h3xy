@@ -141,3 +141,45 @@ fn test_cli_checksum_parity_begin() {
 
     assert_eq!(cli_bytes, lib_bytes);
 }
+
+#[test]
+fn test_cli_checksum_parity_little_endian_file() {
+    let dir = temp_dir("cli_pipeline_parity_csr");
+    let base = dir.join("base.bin");
+    let out_cli = dir.join("out.hex");
+    let out_sum = dir.join("sum.txt");
+
+    write_file(&base, &[0x10, 0x20, 0x30, 0x40]);
+
+    let args = vec![
+        format!("/IN:{};0x2000", base.display()),
+        format!("/CSR0:{}", out_sum.display()),
+        "/XI".to_string(),
+        "-o".to_string(),
+        out_cli.display().to_string(),
+    ];
+
+    let output = run_h3xy(&args);
+    assert_success(&output);
+    let cli_sum = std::fs::read_to_string(&out_sum).unwrap();
+
+    let mut hexfile = parse_binary(&[0x10, 0x20, 0x30, 0x40], 0x2000).unwrap();
+    let algorithm = ChecksumAlgorithm::from_index(0).unwrap();
+    let bytes = h3xy::flag_checksum(
+        &mut hexfile,
+        algorithm,
+        None,
+        true,
+        None,
+        &[],
+        &ChecksumTarget::File(out_sum.clone()),
+    )
+    .unwrap();
+    let lib_sum = bytes
+        .iter()
+        .map(|b| format!("{:02X}", b))
+        .collect::<Vec<_>>()
+        .join(",");
+
+    assert_eq!(cli_sum, lib_sum);
+}
