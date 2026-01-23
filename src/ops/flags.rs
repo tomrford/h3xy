@@ -7,6 +7,10 @@ use crate::{
 
 use super::{LogError, OpsError, execute_log_file};
 
+fn with_ctx<T>(ctx: &str, result: Result<T, OpsError>) -> Result<T, OpsError> {
+    result.map_err(|e| e.with_context(ctx))
+}
+
 /// CLI: /FR with /FP (fill ranges with explicit pattern).
 pub fn flag_fill_ranges_pattern(hexfile: &mut HexFile, ranges: &[Range], pattern: &[u8]) {
     if ranges.is_empty() || pattern.is_empty() {
@@ -54,6 +58,7 @@ pub fn random_fill_seed_from_time(range: Range) -> u64 {
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0);
     let seed = now ^ ((range.start() as u64) << 32) ^ (range.length() as u64);
+    // Avoid zero seed to keep the generator non-degenerate.
     if seed == 0 { 0x9E3779B97F4A7C15 } else { seed }
 }
 
@@ -74,9 +79,7 @@ pub fn flag_merge_transparent(
         offset,
         range,
     };
-    hexfile
-        .merge(other, &options)
-        .map_err(|e| e.with_context("/MT"))
+    with_ctx("/MT", hexfile.merge(other, &options))
 }
 
 /// CLI: /MO (opaque merge).
@@ -91,9 +94,7 @@ pub fn flag_merge_opaque(
         offset,
         range,
     };
-    hexfile
-        .merge(other, &options)
-        .map_err(|e| e.with_context("/MO"))
+    with_ctx("/MO", hexfile.merge(other, &options))
 }
 
 /// CLI: /AR (filter/keep ranges).
@@ -120,9 +121,7 @@ pub fn flag_align(
         fill_byte,
         align_length,
     };
-    hexfile
-        .align(&options)
-        .map_err(|e| e.with_context("/AD/AL"))
+    with_ctx("/AD/AL", hexfile.align(&options))
 }
 
 /// CLI: /SB (split block size).
@@ -132,38 +131,32 @@ pub fn flag_split(hexfile: &mut HexFile, size: u32) {
 
 /// CLI: /SWAPWORD.
 pub fn flag_swap_word(hexfile: &mut HexFile) -> Result<(), OpsError> {
-    hexfile
-        .swap_bytes(crate::SwapMode::Word)
-        .map_err(|e| e.with_context("/SWAPWORD"))
+    with_ctx("/SWAPWORD", hexfile.swap_bytes(crate::SwapMode::Word))
 }
 
 /// CLI: /SWAPLONG.
 pub fn flag_swap_long(hexfile: &mut HexFile) -> Result<(), OpsError> {
-    hexfile
-        .swap_bytes(crate::SwapMode::DWord)
-        .map_err(|e| e.with_context("/SWAPLONG"))
+    with_ctx("/SWAPLONG", hexfile.swap_bytes(crate::SwapMode::DWord))
 }
 
 /// CLI: /REMAP.
 pub fn flag_remap(hexfile: &mut HexFile, options: &RemapOptions) -> Result<(), OpsError> {
-    hexfile.remap(options).map_err(|e| e.with_context("/REMAP"))
+    with_ctx("/REMAP", hexfile.remap(options))
 }
 
 /// CLI: /S12MAP.
 pub fn flag_map_star12(hexfile: &mut HexFile) -> Result<(), OpsError> {
-    hexfile.map_star12().map_err(|e| e.with_context("/S12MAP"))
+    with_ctx("/S12MAP", hexfile.map_star12())
 }
 
 /// CLI: /S12XMAP.
 pub fn flag_map_star12x(hexfile: &mut HexFile) -> Result<(), OpsError> {
-    hexfile
-        .map_star12x()
-        .map_err(|e| e.with_context("/S12XMAP"))
+    with_ctx("/S12XMAP", hexfile.map_star12x())
 }
 
 /// CLI: /S08MAP.
 pub fn flag_map_star08(hexfile: &mut HexFile) -> Result<(), OpsError> {
-    hexfile.map_star08().map_err(|e| e.with_context("/S08MAP"))
+    with_ctx("/S08MAP", hexfile.map_star08())
 }
 
 /// CLI: /CDSPX.
@@ -172,9 +165,7 @@ pub fn flag_dspic_expand(
     range: Range,
     target: Option<u32>,
 ) -> Result<(), OpsError> {
-    hexfile
-        .dspic_expand(range, target)
-        .map_err(|e| e.with_context("/CDSPX"))
+    with_ctx("/CDSPX", hexfile.dspic_expand(range, target))
 }
 
 /// CLI: /CDSPS.
@@ -183,16 +174,12 @@ pub fn flag_dspic_shrink(
     range: Range,
     target: Option<u32>,
 ) -> Result<(), OpsError> {
-    hexfile
-        .dspic_shrink(range, target)
-        .map_err(|e| e.with_context("/CDSPS"))
+    with_ctx("/CDSPS", hexfile.dspic_shrink(range, target))
 }
 
 /// CLI: /CDSPG.
 pub fn flag_dspic_clear_ghost(hexfile: &mut HexFile, range: Range) -> Result<(), OpsError> {
-    hexfile
-        .dspic_clear_ghost(range)
-        .map_err(|e| e.with_context("/CDSPG"))
+    with_ctx("/CDSPG", hexfile.dspic_clear_ghost(range))
 }
 
 /// CLI: /CS or /CSR (little-endian output).
@@ -213,9 +200,7 @@ pub fn flag_checksum(
         forced_range,
         exclude_ranges: exclude_ranges.to_vec(),
     };
-    hexfile
-        .checksum(&options, target)
-        .map_err(|e| e.with_context(context))
+    with_ctx(context, hexfile.checksum(&options, target))
 }
 
 /// CLI: /L (execute log file commands).
