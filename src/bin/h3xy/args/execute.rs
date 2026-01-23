@@ -1,4 +1,7 @@
-use h3xy::{ChecksumAlgorithm, Range, RemapOptions};
+use h3xy::{
+    AlignOptions, ChecksumAlgorithm, Pipeline, PipelineDspic, PipelineError, PipelineMerge, Range,
+    RemapOptions,
+};
 
 use super::error::{CliError, ExecuteOutput};
 use super::io::{load_input, write_output_for_args};
@@ -69,22 +72,106 @@ impl Args {
     pub fn execute(&self) -> Result<ExecuteOutput, CliError> {
         self.validate_supported_features()?;
 
-        let mut hexfile = self.load_hexfile()?;
-        self.apply_mappings(&mut hexfile)?;
-        self.apply_dspic(&mut hexfile)?;
-        self.apply_fill(&mut hexfile);
-        self.apply_cut(&mut hexfile);
-        self.apply_merge(&mut hexfile)?;
-        self.apply_filter_ranges(&mut hexfile);
-        self.apply_log(&mut hexfile)?;
-        self.apply_fill_all(&mut hexfile);
-        self.apply_align(&mut hexfile)?;
-        self.apply_split(&mut hexfile);
-        self.apply_swap(&mut hexfile)?;
+        let hexfile = self.load_hexfile()?;
+        let pipeline = self.build_pipeline(hexfile)?;
+        let result = pipeline
+            .execute(random_fill_bytes, load_input)
+            .map_err(|e| match e {
+                PipelineError::Ops(err) => CliError::Other(err.to_string()),
+                PipelineError::Log(err) => CliError::Other(format!("/L: {err}")),
+            })?;
+        let mut hexfile = result.hexfile;
         let checksum_bytes = self.apply_checksum(&mut hexfile)?;
         self.write_outputs(&hexfile)?;
 
         Ok(ExecuteOutput { checksum_bytes })
+    }
+
+    fn build_pipeline(&self, hexfile: h3xy::HexFile) -> Result<Pipeline, CliError> {
+        let log_commands = if let Some(ref path) = self.log_file {
+            let content = std::fs::read_to_string(path)
+                .map_err(|e| CliError::Other(format!("/L: {e}")))?;
+            Some(
+                h3xy::parse_log_commands(&content)
+                    .map_err(|e| CliError::Other(format!("/L: {e}")))?,
+            )
+        } else {
+            None
+        };
+
+        let mut merge_transparent = Vec::with_capacity(self.merge_transparent.len());
+        for merge in &self.merge_transparent {
+            let other = load_input(&merge.file)?;
+            merge_transparent.push(PipelineMerge {
+                other,
+                offset: merge.offset.unwrap_or(0),
+                range: merge.range,
+            });
+        }
+        let mut merge_opaque = Vec::with_capacity(self.merge_opaque.len());
+        for merge in &self.merge_opaque {
+            let other = load_input(&merge.file)?;
+            merge_opaque.push(PipelineMerge {
+                other,
+                offset: merge.offset.unwrap_or(0),
+                range: merge.range,
+            });
+        }
+
+        let align = self.align_address.map(|alignment| AlignOptions {
+            alignment,
+            fill_byte: self.align_fill,
+            align_length: self.align_length,
+        });
+
+        let mut pipeline = Pipeline::default();
+        pipeline.hexfile = hexfile;
+        pipeline.fill_ranges = self.fill_ranges.clone();
+        pipeline.fill_pattern = if self.fill_pattern_set {
+            Some(self.fill_pattern.clone())
+        } else {
+            None
+        };
+        pipeline.cut_ranges = self.cut_ranges.clone();
+        pipeline.merge_transparent = merge_transparent;
+        pipeline.merge_opaque = merge_opaque;
+        pipeline.address_ranges = self.address_range.clone();
+        pipeline.log_commands = log_commands;
+        pipeline.fill_all = if self.fill_all { Some(self.align_fill) } else { None };
+        pipeline.align = align;
+        pipeline.split = self.split_block_size;
+        pipeline.swap_word = self.swap_word;
+        pipeline.swap_long = self.swap_long;
+        pipeline.checksum = None;
+        pipeline.map_star12 = self.s12_map;
+        pipeline.map_star12x = self.s12x_map;
+        pipeline.map_star08 = self.s08_map;
+        pipeline.remap = self.remap.as_ref().map(|remap| RemapOptions {
+            start: remap.start,
+            end: remap.end,
+            linear: remap.linear,
+            size: remap.size,
+            inc: remap.inc,
+        });
+        pipeline.dspic_expand = self
+            .dspic_expand
+            .iter()
+            .map(|op| PipelineDspic {
+                range: op.range,
+                target: op.target,
+            })
+            .collect();
+        pipeline.dspic_shrink = self
+            .dspic_shrink
+            .iter()
+            .map(|op| PipelineDspic {
+                range: op.range,
+                target: op.target,
+            })
+            .collect();
+        pipeline.dspic_clear_ghost = self.dspic_clear_ghost.clone();
+
+        Ok(pipeline)
     }
 
     fn load_hexfile(&self) -> Result<h3xy::HexFile, CliError> {
@@ -118,128 +205,6 @@ impl Args {
             return Ok(h3xy::HexFile::new());
         }
         Err(ParseArgError::MissingInputFile.into())
-    }
-
-    fn apply_mappings(&self, hexfile: &mut h3xy::HexFile) -> Result<(), CliError> {
-        if self.s12_map {
-            self.wrap_error("/S12MAP", h3xy::flag_map_star12(hexfile))?;
-        }
-        if self.s12x_map {
-            self.wrap_error("/S12XMAP", h3xy::flag_map_star12x(hexfile))?;
-        }
-        if self.s08_map {
-            self.wrap_error("/S08MAP", h3xy::flag_map_star08(hexfile))?;
-        }
-        if let Some(ref remap) = self.remap {
-            let options = RemapOptions {
-                start: remap.start,
-                end: remap.end,
-                linear: remap.linear,
-                size: remap.size,
-                inc: remap.inc,
-            };
-            self.wrap_error("/REMAP", h3xy::flag_remap(hexfile, &options))?;
-        }
-        Ok(())
-    }
-
-    fn apply_dspic(&self, hexfile: &mut h3xy::HexFile) -> Result<(), CliError> {
-        for op in &self.dspic_expand {
-            let opt = "/CDSPX";
-            self.wrap_error(opt, h3xy::flag_dspic_expand(hexfile, op.range, op.target))?;
-        }
-        for op in &self.dspic_shrink {
-            let opt = "/CDSPS";
-            self.wrap_error(opt, h3xy::flag_dspic_shrink(hexfile, op.range, op.target))?;
-        }
-        for range in &self.dspic_clear_ghost {
-            let opt = "/CDSPG";
-            self.wrap_error(opt, h3xy::flag_dspic_clear_ghost(hexfile, *range))?;
-        }
-        Ok(())
-    }
-
-    fn apply_fill(&self, hexfile: &mut h3xy::HexFile) {
-        if self.fill_pattern_set {
-            h3xy::flag_fill_ranges_pattern(hexfile, &self.fill_ranges, &self.fill_pattern);
-            return;
-        }
-        h3xy::flag_fill_ranges_random(hexfile, &self.fill_ranges, random_fill_bytes);
-    }
-
-    fn apply_cut(&self, hexfile: &mut h3xy::HexFile) {
-        h3xy::flag_cut_ranges(hexfile, &self.cut_ranges);
-    }
-
-    fn apply_merge(&self, hexfile: &mut h3xy::HexFile) -> Result<(), CliError> {
-        for merge in &self.merge_transparent {
-            let other = load_input(&merge.file)?;
-            let opt = format!("/MT:{}", merge.file.display());
-            self.wrap_error(
-                &opt,
-                h3xy::flag_merge_transparent(
-                    hexfile,
-                    &other,
-                    merge.offset.unwrap_or(0),
-                    merge.range,
-                ),
-            )?;
-        }
-        for merge in &self.merge_opaque {
-            let other = load_input(&merge.file)?;
-            let opt = format!("/MO:{}", merge.file.display());
-            self.wrap_error(
-                &opt,
-                h3xy::flag_merge_opaque(hexfile, &other, merge.offset.unwrap_or(0), merge.range),
-            )?;
-        }
-        Ok(())
-    }
-
-    fn apply_filter_ranges(&self, hexfile: &mut h3xy::HexFile) {
-        h3xy::flag_filter_ranges(hexfile, &self.address_range);
-    }
-
-    fn apply_log(&self, hexfile: &mut h3xy::HexFile) -> Result<(), CliError> {
-        if let Some(ref log_path) = self.log_file {
-            self.wrap_error(
-                "/L",
-                h3xy::flag_execute_log_file(hexfile, log_path, load_input),
-            )?;
-        }
-        Ok(())
-    }
-
-    fn apply_fill_all(&self, hexfile: &mut h3xy::HexFile) {
-        if self.fill_all {
-            h3xy::flag_fill_all(hexfile, self.align_fill);
-        }
-    }
-
-    fn apply_align(&self, hexfile: &mut h3xy::HexFile) -> Result<(), CliError> {
-        if let Some(alignment) = self.align_address {
-            self.wrap_error(
-                "/AD/AL",
-                h3xy::flag_align(hexfile, alignment, self.align_fill, self.align_length),
-            )?;
-        }
-        Ok(())
-    }
-
-    fn apply_split(&self, hexfile: &mut h3xy::HexFile) {
-        if let Some(size) = self.split_block_size {
-            h3xy::flag_split(hexfile, size);
-        }
-    }
-
-    fn apply_swap(&self, hexfile: &mut h3xy::HexFile) -> Result<(), CliError> {
-        if self.swap_word {
-            self.wrap_error("/SWAPWORD", h3xy::flag_swap_word(hexfile))?;
-        }
-        if self.swap_long {
-            self.wrap_error("/SWAPLONG", h3xy::flag_swap_long(hexfile))?;
-        }
-        Ok(())
     }
 
     fn apply_checksum(&self, hexfile: &mut h3xy::HexFile) -> Result<Option<Vec<u8>>, CliError> {
