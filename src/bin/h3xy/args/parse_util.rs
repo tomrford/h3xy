@@ -47,6 +47,13 @@ pub(super) fn parse_number(s: &str) -> Result<u32, ParseArgError> {
         return Err(ParseArgError::InvalidNumber("empty".to_string()));
     }
 
+    let s = s
+        .trim_end_matches(|c: char| c == 'u' || c == 'U' || c == 'l' || c == 'L')
+        .trim();
+    if s.is_empty() {
+        return Err(ParseArgError::InvalidNumber("empty".to_string()));
+    }
+
     let (radix, digits) = if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
         (16, hex)
     } else if let Some(bin) = s.strip_prefix("0b").or_else(|| s.strip_prefix("0B")) {
@@ -365,6 +372,13 @@ mod tests {
     fn test_parse_number_with_hex_suffix() {
         assert_eq!(parse_number("10h").unwrap(), 0x10);
         assert_eq!(parse_number("0fH").unwrap(), 0x0F);
+    }
+
+    #[test]
+    fn test_parse_number_with_c_suffixes() {
+        assert_eq!(parse_number("0x10u").unwrap(), 0x10);
+        assert_eq!(parse_number("0x10UL").unwrap(), 0x10);
+        assert_eq!(parse_number("255u").unwrap(), 255);
     }
 
     #[test]

@@ -89,6 +89,13 @@ fn parse_number(s: &str) -> Result<u32, RangeError> {
         return Err(RangeError::InvalidNumber("empty string".to_string()));
     }
 
+    let s = s
+        .trim_end_matches(|c: char| c == 'u' || c == 'U' || c == 'l' || c == 'L')
+        .trim();
+    if s.is_empty() {
+        return Err(RangeError::InvalidNumber("empty string".to_string()));
+    }
+
     let (radix, digits) = if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
         (16, hex)
     } else if let Some(bin) = s.strip_prefix("0b").or_else(|| s.strip_prefix("0B")) {
@@ -173,6 +180,13 @@ mod tests {
     #[test]
     fn test_parse_range_with_hex_suffix() {
         let r: Range = "1000h-10FFh".parse().unwrap();
+        assert_eq!(r.start(), 0x1000);
+        assert_eq!(r.end(), 0x10FF);
+    }
+
+    #[test]
+    fn test_parse_range_with_c_suffixes() {
+        let r: Range = "0x1000u-0x10FFUL".parse().unwrap();
         assert_eq!(r.start(), 0x1000);
         assert_eq!(r.end(), 0x10FF);
     }
