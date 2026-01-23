@@ -62,6 +62,7 @@ cargo run -- [args]   # Run CLI
 
 ### Project memory
 - When uncertain about HexView behavior, consult the reference manual first; if the manual is silent, make a concrete choice and stick to it until validation tests prove otherwise.
+- If behavior is ambiguous or unspecified, record the assumption in Project memory so it can be verified in the validation environment.
 - First pass parity excludes proprietary/OEM formats; validation suite should not include those cases.
 - HexView manual review: core CLI parity now includes S-Record + binary IO and `/XA` hex-ascii output; advanced OEM formats remain TBD.
 - CLI args parsing split into `src/bin/h3xy/args/` modules to keep files <500 LOC.
@@ -125,7 +126,7 @@ cargo run -- [args]   # Run CLI
 - Intel-HEX auto output now omits extended records when max address <= 0xFFFF.
 - CLI auto-detect now scans up to first 25 non-empty lines for ASCII; if any non-ASCII, treat as binary input (manual behavior).
 - S-Record parsing accepts lowercase 's' prefix; CLI auto-detect recognizes it too.
-- Manual says HEX-ASCII import overlap with input file should warn and ignore input; CLI currently errors (track in refactors.md).
+- HEX-ASCII import overlap now warns (stderr) and ignores input file, per manual.
 
 ### TODOs (current)
 - Review segment overflow policy (saturating `end_address` vs strict error) once validation suite runs.

@@ -74,6 +74,30 @@ pub(super) fn load_hex_ascii_input(path: &PathBuf, offset: u32) -> Result<HexFil
     Ok(hexfile)
 }
 
+pub(super) fn hexfiles_overlap(a: &HexFile, b: &HexFile) -> bool {
+    let mut a_segments = a.segments().to_vec();
+    let mut b_segments = b.segments().to_vec();
+    a_segments.sort_by_key(|s| s.start_address);
+    b_segments.sort_by_key(|s| s.start_address);
+
+    let mut i = 0usize;
+    let mut j = 0usize;
+    while i < a_segments.len() && j < b_segments.len() {
+        let a_seg = &a_segments[i];
+        let b_seg = &b_segments[j];
+        if a_seg.end_address() < b_seg.start_address {
+            i += 1;
+            continue;
+        }
+        if b_seg.end_address() < a_seg.start_address {
+            j += 1;
+            continue;
+        }
+        return true;
+    }
+    false
+}
+
 pub(super) fn load_intel_hex_16bit_input(path: &PathBuf) -> Result<HexFile, CliError> {
     let content = std::fs::read(path)?;
     let hexfile = h3xy::parse_intel_hex_16bit(&content)?;

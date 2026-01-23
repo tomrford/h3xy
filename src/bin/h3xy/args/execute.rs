@@ -56,13 +56,10 @@ impl Args {
                 "16-bit Intel HEX import (/II2) cannot be combined with /IN or /IA".into(),
             ));
         }
-        if (self.import_binary.is_some()
-            || self.import_hex_ascii.is_some()
-            || self.import_i16.is_some())
-            && self.input_file.is_some()
+        if (self.import_binary.is_some() || self.import_i16.is_some()) && self.input_file.is_some()
         {
             return Err(CliError::Unsupported(
-                "explicit import (/IN, /IA, /II2) cannot be combined with input file".into(),
+                "explicit import (/IN, /II2) cannot be combined with input file".into(),
             ));
         }
         Ok(())
@@ -95,7 +92,21 @@ impl Args {
             return super::io::load_binary_input(&import.file, import.offset);
         }
         if let Some(ref import) = self.import_hex_ascii {
-            return super::io::load_hex_ascii_input(&import.file, import.offset);
+            let ascii = super::io::load_hex_ascii_input(&import.file, import.offset)?;
+            if let Some(ref path) = self.input_file {
+                let mut base = load_input(path)?;
+                if super::io::hexfiles_overlap(&base, &ascii) {
+                    if !self.silent {
+                        eprintln!("Warning: /IA overlaps input file; ignoring input file");
+                    }
+                    return Ok(ascii);
+                }
+                for segment in ascii.segments() {
+                    base.append_segment(segment.clone());
+                }
+                return Ok(base);
+            }
+            return Ok(ascii);
         }
         if let Some(ref import) = self.import_i16 {
             return super::io::load_intel_hex_16bit_input(import);

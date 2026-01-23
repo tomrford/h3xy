@@ -414,6 +414,28 @@ fn test_cli_auto_detect_srec_lowercase() {
 }
 
 #[test]
+fn test_cli_hex_ascii_overlap_ignores_input() {
+    let dir = temp_dir("cli_hex_ascii_overlap");
+    let input = dir.join("input.hex");
+    let ascii = dir.join("ascii.txt");
+    let out = dir.join("out.bin");
+    write_file(&input, b":01000000AA55\n:00000001FF\n");
+    write_file(&ascii, b"01 02");
+
+    let args = vec![
+        input.display().to_string(),
+        format!("/IA:{}", ascii.display()),
+        "/XN".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+    let output = run_h3xy(&args);
+    assert_success(&output);
+    let data = std::fs::read(&out).unwrap();
+    assert_eq!(data, vec![0x01, 0x02]);
+}
+
+#[test]
 fn test_cli_remap_basic() {
     let dir = temp_dir("cli_remap");
     let input = dir.join("input.hex");
