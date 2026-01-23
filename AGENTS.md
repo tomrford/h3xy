@@ -135,6 +135,7 @@ cargo run -- [args]   # Run CLI
 - Finish CLI parsing cleanup (table-driven for remaining non-output options).
 - Consider deeper ops error context inside core ops (beyond flag wrappers).
 - Crate reuse decision: keep hand-rolled Intel-HEX/S-Record/HEX-ASCII writers/parsers for parity; `bin_file` (used in mint) remains a candidate once validation suite proves equivalence.
+- Parallelization: use subagents for independent workstreams (parse refactor, checksum tests, checksum refactor) to avoid context pollution.
 
 ### Project philosophy
 - CLI must be a drop-in HexView replacement for non-proprietary formats: binary-equivalent outputs for Intel HEX, S-Record, HEX ASCII, and raw binary.

@@ -9,6 +9,8 @@ use super::parse_util::{
 };
 use super::types::{Args, MergeParam, OutputFormat, ParseArgError};
 
+type ValueParser = fn(&mut Args, &str, &str) -> Result<bool, ParseArgError>;
+
 fn extend_ranges(target: &mut Vec<Range>, value: &str) -> Result<(), ParseArgError> {
     let ranges = parse_hexview_ranges(value)?;
     target.extend(ranges);
@@ -290,6 +292,14 @@ fn parse_value_option(
     }
 }
 
+fn parse_output_option_value(
+    args: &mut Args,
+    key_upper: &str,
+    value: &str,
+) -> Result<bool, ParseArgError> {
+    parse_output_option(args, key_upper, Some(value))
+}
+
 fn set_output_format(args: &mut Args, format: OutputFormat) -> Result<(), ParseArgError> {
     if args.output_format.is_some() {
         return Err(ParseArgError::DuplicateOutputFormat);
@@ -457,36 +467,22 @@ pub(super) fn parse_option(args: &mut Args, opt: &str) -> Result<(), ParseArgErr
     if let Some((key, value)) = split_option(opt) {
         let key_upper = key.to_ascii_uppercase();
 
-        if parse_output_option(args, &key_upper, Some(value))? {
-            return Ok(());
-        }
-        if parse_import_option(args, &key_upper, value)? {
-            return Ok(());
-        }
-        if parse_path_option(args, &key_upper, value)? {
-            return Ok(());
-        }
-        if parse_range_option(args, &key_upper, value)? {
-            return Ok(());
-        }
-        if parse_merge_option(args, &key_upper, value)? {
-            return Ok(());
-        }
-        if parse_numeric_option(args, &key_upper, value)? {
-            return Ok(());
-        }
-        if parse_checksum_option(args, &key_upper, value)? {
-            return Ok(());
-        }
-        if parse_data_processing_option(args, &key_upper, value)? {
-            return Ok(());
-        }
-        if parse_dspic_option(args, &key_upper, value)? {
-            return Ok(());
-        }
-
-        if parse_value_option(args, &key_upper, value)? {
-            return Ok(());
+        let parsers: &[ValueParser] = &[
+            parse_output_option_value,
+            parse_import_option,
+            parse_path_option,
+            parse_range_option,
+            parse_merge_option,
+            parse_numeric_option,
+            parse_checksum_option,
+            parse_data_processing_option,
+            parse_dspic_option,
+            parse_value_option,
+        ];
+        for parser in parsers {
+            if parser(args, &key_upper, value)? {
+                return Ok(());
+            }
         }
         return Err(ParseArgError::InvalidOption(opt.to_string()));
     } else {

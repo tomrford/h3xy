@@ -122,89 +122,65 @@ impl HexFile {
     pub fn calculate_checksum(&self, options: &ChecksumOptions) -> Result<Vec<u8>, OpsError> {
         let data = self.collect_data_for_checksum(options)?;
 
+        fn u16_bytes(value: u16, little_endian: bool) -> Vec<u8> {
+            if little_endian {
+                value.to_le_bytes().to_vec()
+            } else {
+                value.to_be_bytes().to_vec()
+            }
+        }
+
+        fn u32_bytes(value: u32, little_endian: bool) -> Vec<u8> {
+            if little_endian {
+                value.to_le_bytes().to_vec()
+            } else {
+                value.to_be_bytes().to_vec()
+            }
+        }
+
         let result = match options.algorithm {
             ChecksumAlgorithm::ByteSumBe => {
                 let sum = byte_sum(&data);
-                if options.little_endian_output {
-                    sum.to_le_bytes().to_vec()
-                } else {
-                    sum.to_be_bytes().to_vec()
-                }
+                u16_bytes(sum, options.little_endian_output)
             }
             ChecksumAlgorithm::ByteSumLe => {
                 let sum = byte_sum(&data);
-                if options.little_endian_output {
-                    sum.to_le_bytes().to_vec()
-                } else {
-                    sum.to_be_bytes().to_vec()
-                }
+                u16_bytes(sum, options.little_endian_output)
             }
             ChecksumAlgorithm::WordSumBe => {
                 let sum = word_sum_be(&data)?;
-                if options.little_endian_output {
-                    sum.to_le_bytes().to_vec()
-                } else {
-                    sum.to_be_bytes().to_vec()
-                }
+                u16_bytes(sum, options.little_endian_output)
             }
             ChecksumAlgorithm::WordSumLe => {
                 let sum = word_sum_le(&data)?;
-                if options.little_endian_output {
-                    sum.to_le_bytes().to_vec()
-                } else {
-                    sum.to_be_bytes().to_vec()
-                }
+                u16_bytes(sum, options.little_endian_output)
             }
             ChecksumAlgorithm::ByteSumTwosComplement => {
                 let sum = byte_sum(&data);
                 let twos = (!sum).wrapping_add(1);
-                if options.little_endian_output {
-                    twos.to_le_bytes().to_vec()
-                } else {
-                    twos.to_be_bytes().to_vec()
-                }
+                u16_bytes(twos, options.little_endian_output)
             }
             ChecksumAlgorithm::WordSumBeTwosComplement => {
                 let sum = word_sum_be(&data)?;
                 let twos = (!sum).wrapping_add(1);
-                if options.little_endian_output {
-                    twos.to_le_bytes().to_vec()
-                } else {
-                    twos.to_be_bytes().to_vec()
-                }
+                u16_bytes(twos, options.little_endian_output)
             }
             ChecksumAlgorithm::WordSumLeTwosComplement => {
                 let sum = word_sum_le(&data)?;
                 let twos = (!sum).wrapping_add(1);
-                if options.little_endian_output {
-                    twos.to_le_bytes().to_vec()
-                } else {
-                    twos.to_be_bytes().to_vec()
-                }
+                u16_bytes(twos, options.little_endian_output)
             }
             ChecksumAlgorithm::ModularSum => {
                 let sum = byte_sum(&data);
-                if options.little_endian_output {
-                    sum.to_le_bytes().to_vec()
-                } else {
-                    sum.to_be_bytes().to_vec()
-                }
+                u16_bytes(sum, options.little_endian_output)
             }
             ChecksumAlgorithm::Crc16 => {
                 let crc = crc16_arc(&data);
-                if options.little_endian_output {
-                    crc.to_le_bytes().to_vec()
-                } else {
-                    crc.to_be_bytes().to_vec()
-                }
+                u16_bytes(crc, options.little_endian_output)
             }
             ChecksumAlgorithm::Crc32 => {
                 let crc = crc32_iso_hdlc(&data);
-                if options.little_endian_output {
-                    crc.to_le_bytes().to_vec()
-                } else {
-                    crc.to_be_bytes().to_vec()
-                }
+                u32_bytes(crc, options.little_endian_output)
             }
             ChecksumAlgorithm::Crc16CcittLe => {
                 let crc = crc16_ibm_sdlc(&data);
