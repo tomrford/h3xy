@@ -271,6 +271,25 @@ fn parse_dspic_option(
     }
 }
 
+fn parse_value_option(
+    args: &mut Args,
+    key_upper: &str,
+    value: &str,
+) -> Result<bool, ParseArgError> {
+    match key_upper {
+        "FP" => {
+            args.fill_pattern = parse_hex_bytes(value)?;
+            args.fill_pattern_set = true;
+            Ok(true)
+        }
+        "REMAP" => {
+            args.remap = Some(parse_remap(value)?);
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
 fn set_output_format(args: &mut Args, format: OutputFormat) -> Result<(), ParseArgError> {
     if args.output_format.is_some() {
         return Err(ParseArgError::DuplicateOutputFormat);
@@ -466,16 +485,10 @@ pub(super) fn parse_option(args: &mut Args, opt: &str) -> Result<(), ParseArgErr
             return Ok(());
         }
 
-        match key_upper.as_str() {
-            "FP" => {
-                args.fill_pattern = parse_hex_bytes(value)?;
-                args.fill_pattern_set = true;
-            }
-            "REMAP" => {
-                args.remap = Some(parse_remap(value)?);
-            }
-            _ => return Err(ParseArgError::InvalidOption(opt.to_string())),
+        if parse_value_option(args, &key_upper, value)? {
+            return Ok(());
         }
+        return Err(ParseArgError::InvalidOption(opt.to_string()));
     } else {
         let opt_upper = opt.to_ascii_uppercase();
         if parse_output_option(args, &opt_upper, None)? {

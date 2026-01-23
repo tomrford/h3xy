@@ -183,3 +183,76 @@ fn test_cli_checksum_parity_little_endian_file() {
 
     assert_eq!(cli_sum, lib_sum);
 }
+
+#[test]
+fn test_cli_pipeline_parity_xsb_split() {
+    let dir = temp_dir("cli_pipeline_parity_xsb");
+    let base = dir.join("base.bin");
+    let merge = dir.join("merge.bin");
+    let out_cli = dir.join("out.bin");
+
+    write_file(&base, &[0x01, 0x02]);
+    write_file(&merge, &[0xAA]);
+
+    let args = vec![
+        format!("/IN:{};0x1000", base.display()),
+        format!("/MO:{};0x2000", merge.display()),
+        "/XSB".to_string(),
+        "-o".to_string(),
+        out_cli.display().to_string(),
+    ];
+
+    let output = run_h3xy(&args);
+    assert_success(&output);
+    let cli_a = std::fs::read(dir.join("out_1000.bin")).unwrap();
+    let cli_b = std::fs::read(dir.join("out_2000.bin")).unwrap();
+
+    let base_hex = parse_binary(&[0x01, 0x02], 0x1000).unwrap();
+    let merge_hex = parse_binary(&[0xAA], 0).unwrap();
+
+    let mut pipeline = Pipeline::default();
+    pipeline.hexfile = base_hex;
+    pipeline.merge_opaque = vec![PipelineMerge {
+        other: merge_hex,
+        offset: 0x2000,
+        range: None,
+    }];
+
+    let result = pipeline.execute_without_log(|range| vec![0; range.length() as usize]).unwrap();
+    let mut segments = result.hexfile.normalized_lossy().into_segments();
+    segments.sort_by_key(|s| s.start_address);
+
+    assert_eq!(cli_a, segments[0].data);
+    assert_eq!(cli_b, segments[1].data);
+}
+
+#[test]
+fn test_cli_pipeline_parity_fa_fill_binary() {
+    let dir = temp_dir("cli_pipeline_parity_fa");
+    let base = dir.join("base.bin");
+    let out_cli = dir.join("out.bin");
+
+    write_file(&base, &[0xAA]);
+
+    let args = vec![
+        format!("/IN:{};0x1000", base.display()),
+        "/AF:00".to_string(),
+        "/FA".to_string(),
+        "/XN".to_string(),
+        "-o".to_string(),
+        out_cli.display().to_string(),
+    ];
+
+    let output = run_h3xy(&args);
+    assert_success(&output);
+    let cli_bytes = std::fs::read(&out_cli).unwrap();
+
+    let base_hex = parse_binary(&[0xAA], 0x1000).unwrap();
+    let mut pipeline = Pipeline::default();
+    pipeline.hexfile = base_hex;
+    pipeline.fill_all = Some(0x00);
+    let result = pipeline.execute_without_log(|range| vec![0; range.length() as usize]).unwrap();
+    let lib_bytes = write_binary(&result.hexfile, &BinaryWriteOptions { fill_gaps: Some(0x00) });
+
+    assert_eq!(cli_bytes, lib_bytes);
+}
