@@ -32,6 +32,7 @@ pub fn assert_success(output: &Output) {
     }
 }
 
+#[allow(dead_code)]
 pub fn run_hex_output(args: Vec<String>, out_path: &Path) -> h3xy::HexFile {
     let output = run_h3xy(&args);
     assert_success(&output);
@@ -39,6 +40,7 @@ pub fn run_hex_output(args: Vec<String>, out_path: &Path) -> h3xy::HexFile {
     parse_intel_hex(&data).unwrap()
 }
 
+#[allow(dead_code)]
 pub fn read_nonempty_lines(path: &Path) -> Vec<String> {
     let text = std::fs::read_to_string(path).unwrap();
     text.lines()
