@@ -29,6 +29,7 @@ impl Default for IntelHexWriteOptions {
     }
 }
 
+/// Parse Intel-HEX input. CLI: auto-detect Intel-HEX input.
 pub fn parse_intel_hex(input: &[u8]) -> Result<HexFile, ParseError> {
     let text = std::str::from_utf8(input).map_err(|e| ParseError::InvalidRecord {
         line: 1,
@@ -178,6 +179,7 @@ pub fn parse_intel_hex(input: &[u8]) -> Result<HexFile, ParseError> {
     Ok(HexFile::with_segments(segments))
 }
 
+/// Parse Intel-HEX with 16-bit addressing (address * 2). CLI: /II2.
 pub fn parse_intel_hex_16bit(input: &[u8]) -> Result<HexFile, ParseError> {
     let hexfile = parse_intel_hex(input)?;
     let mut segments = Vec::with_capacity(hexfile.segments().len());
@@ -200,6 +202,7 @@ pub fn parse_intel_hex_16bit(input: &[u8]) -> Result<HexFile, ParseError> {
     Ok(HexFile::with_segments(segments))
 }
 
+/// Write Intel-HEX output. CLI: /XI.
 pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec<u8> {
     let normalized = hexfile.normalized_lossy();
     let mut output = Vec::new();

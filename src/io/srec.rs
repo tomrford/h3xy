@@ -23,6 +23,7 @@ impl Default for SRecordWriteOptions {
     }
 }
 
+/// Parse Motorola S-Record input. CLI: auto-detect S-Record input.
 pub fn parse_srec(data: &[u8]) -> Result<HexFile, ParseError> {
     let mut hexfile = HexFile::new();
 
@@ -132,6 +133,7 @@ pub fn parse_srec(data: &[u8]) -> Result<HexFile, ParseError> {
     Ok(hexfile)
 }
 
+/// Write Motorola S-Record output. CLI: /XS.
 pub fn write_srec(hexfile: &HexFile, options: &SRecordWriteOptions) -> Result<Vec<u8>, ParseError> {
     let normalized = hexfile.normalized_lossy();
     let max_addr = normalized.max_address().unwrap_or(0);

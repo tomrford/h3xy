@@ -9,6 +9,7 @@ pub struct BinaryWriteOptions {
 }
 
 /// Parse a raw binary blob into a single segment at the given base address.
+/// CLI: /IN.
 pub fn parse_binary(data: &[u8], base_address: u32) -> Result<HexFile, ParseError> {
     if data.is_empty() {
         return Ok(HexFile::new());
@@ -35,6 +36,7 @@ pub fn parse_binary(data: &[u8], base_address: u32) -> Result<HexFile, ParseErro
 }
 
 /// Write the HexFile to a binary blob.
+/// CLI: /XN.
 pub fn write_binary(hexfile: &HexFile, options: &BinaryWriteOptions) -> Vec<u8> {
     if hexfile.segments().is_empty() {
         return Vec::new();

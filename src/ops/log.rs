@@ -40,6 +40,7 @@ fn strip_quotes(s: &str) -> &str {
     s.trim_matches(|c| c == '"' || c == '\'')
 }
 
+/// Parse log commands. CLI: /L.
 pub fn parse_log_commands(content: &str) -> Result<Vec<LogCommand>, LogError> {
     let mut commands = Vec::new();
 
@@ -82,6 +83,7 @@ pub fn parse_log_commands(content: &str) -> Result<Vec<LogCommand>, LogError> {
     Ok(commands)
 }
 
+/// Execute parsed log commands. CLI: /L.
 pub fn execute_log_commands<F, E>(
     hexfile: &mut HexFile,
     commands: &[LogCommand],
@@ -109,6 +111,7 @@ where
     Ok(())
 }
 
+/// Execute commands from a log file. CLI: /L.
 pub fn execute_log_file<F, E>(hexfile: &mut HexFile, path: &Path, load: F) -> Result<(), LogError>
 where
     F: FnMut(&Path) -> Result<HexFile, E>,

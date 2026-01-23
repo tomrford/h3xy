@@ -24,6 +24,7 @@ pub struct CCodeOutput {
     pub h: Vec<u8>,
 }
 
+/// Write C-array output. CLI: /XC.
 pub fn write_c_code(
     hexfile: &HexFile,
     options: &CCodeWriteOptions,

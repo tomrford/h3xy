@@ -7,6 +7,7 @@ use crate::{
 
 use super::{LogError, OpsError, execute_log_file};
 
+/// CLI: /FR with /FP (fill ranges with explicit pattern).
 pub fn flag_fill_ranges_pattern(hexfile: &mut HexFile, ranges: &[Range], pattern: &[u8]) {
     if ranges.is_empty() || pattern.is_empty() {
         return;
@@ -20,6 +21,7 @@ pub fn flag_fill_ranges_pattern(hexfile: &mut HexFile, ranges: &[Range], pattern
     }
 }
 
+/// CLI: /FR with /FP (fill ranges with explicit pattern).
 pub fn flag_fill_ranges_random<F>(hexfile: &mut HexFile, ranges: &[Range], mut random: F)
 where
     F: FnMut(Range) -> Vec<u8>,
@@ -30,6 +32,7 @@ where
     }
 }
 
+/// CLI: /FR without /FP (random fill helper).
 pub fn random_fill_bytes(range: Range, seed: u64) -> Vec<u8> {
     let len = range.length() as usize;
     if len == 0 {
@@ -44,6 +47,7 @@ pub fn random_fill_bytes(range: Range, seed: u64) -> Vec<u8> {
     out
 }
 
+/// CLI: /FR without /FP (seed helper for random fill).
 pub fn random_fill_seed_from_time(range: Range) -> u64 {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -53,10 +57,12 @@ pub fn random_fill_seed_from_time(range: Range) -> u64 {
     if seed == 0 { 0x9E3779B97F4A7C15 } else { seed }
 }
 
+/// CLI: /CR (cut/remove ranges).
 pub fn flag_cut_ranges(hexfile: &mut HexFile, ranges: &[Range]) {
     hexfile.cut_ranges(ranges);
 }
 
+/// CLI: /MT (transparent merge).
 pub fn flag_merge_transparent(
     hexfile: &mut HexFile,
     other: &HexFile,
@@ -73,6 +79,7 @@ pub fn flag_merge_transparent(
         .map_err(|e| e.with_context("/MT"))
 }
 
+/// CLI: /MO (opaque merge).
 pub fn flag_merge_opaque(
     hexfile: &mut HexFile,
     other: &HexFile,
@@ -89,16 +96,19 @@ pub fn flag_merge_opaque(
         .map_err(|e| e.with_context("/MO"))
 }
 
+/// CLI: /AR (filter/keep ranges).
 pub fn flag_filter_ranges(hexfile: &mut HexFile, ranges: &[Range]) {
     if !ranges.is_empty() {
         hexfile.filter_ranges(ranges);
     }
 }
 
+/// CLI: /FA (fill all gaps with /AF byte).
 pub fn flag_fill_all(hexfile: &mut HexFile, fill_byte: u8) {
     hexfile.fill_gaps(fill_byte);
 }
 
+/// CLI: /AD, /AL (align), uses /AF as fill.
 pub fn flag_align(
     hexfile: &mut HexFile,
     alignment: u32,
@@ -115,40 +125,48 @@ pub fn flag_align(
         .map_err(|e| e.with_context("/AD/AL"))
 }
 
+/// CLI: /SB (split block size).
 pub fn flag_split(hexfile: &mut HexFile, size: u32) {
     hexfile.split(size);
 }
 
+/// CLI: /SWAPWORD.
 pub fn flag_swap_word(hexfile: &mut HexFile) -> Result<(), OpsError> {
     hexfile
         .swap_bytes(crate::SwapMode::Word)
         .map_err(|e| e.with_context("/SWAPWORD"))
 }
 
+/// CLI: /SWAPLONG.
 pub fn flag_swap_long(hexfile: &mut HexFile) -> Result<(), OpsError> {
     hexfile
         .swap_bytes(crate::SwapMode::DWord)
         .map_err(|e| e.with_context("/SWAPLONG"))
 }
 
+/// CLI: /REMAP.
 pub fn flag_remap(hexfile: &mut HexFile, options: &RemapOptions) -> Result<(), OpsError> {
     hexfile.remap(options).map_err(|e| e.with_context("/REMAP"))
 }
 
+/// CLI: /S12MAP.
 pub fn flag_map_star12(hexfile: &mut HexFile) -> Result<(), OpsError> {
     hexfile.map_star12().map_err(|e| e.with_context("/S12MAP"))
 }
 
+/// CLI: /S12XMAP.
 pub fn flag_map_star12x(hexfile: &mut HexFile) -> Result<(), OpsError> {
     hexfile
         .map_star12x()
         .map_err(|e| e.with_context("/S12XMAP"))
 }
 
+/// CLI: /S08MAP.
 pub fn flag_map_star08(hexfile: &mut HexFile) -> Result<(), OpsError> {
     hexfile.map_star08().map_err(|e| e.with_context("/S08MAP"))
 }
 
+/// CLI: /CDSPX.
 pub fn flag_dspic_expand(
     hexfile: &mut HexFile,
     range: Range,
@@ -159,6 +177,7 @@ pub fn flag_dspic_expand(
         .map_err(|e| e.with_context("/CDSPX"))
 }
 
+/// CLI: /CDSPS.
 pub fn flag_dspic_shrink(
     hexfile: &mut HexFile,
     range: Range,
@@ -169,12 +188,14 @@ pub fn flag_dspic_shrink(
         .map_err(|e| e.with_context("/CDSPS"))
 }
 
+/// CLI: /CDSPG.
 pub fn flag_dspic_clear_ghost(hexfile: &mut HexFile, range: Range) -> Result<(), OpsError> {
     hexfile
         .dspic_clear_ghost(range)
         .map_err(|e| e.with_context("/CDSPG"))
 }
 
+/// CLI: /CS or /CSR (little-endian output).
 pub fn flag_checksum(
     hexfile: &mut HexFile,
     algorithm: ChecksumAlgorithm,
@@ -197,6 +218,7 @@ pub fn flag_checksum(
         .map_err(|e| e.with_context(context))
 }
 
+/// CLI: /L (execute log file commands).
 pub fn flag_execute_log_file<F, E>(
     hexfile: &mut HexFile,
     path: &std::path::Path,
