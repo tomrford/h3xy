@@ -13,6 +13,7 @@ VALIDATION_RUNNER="$ROOT_DIR/scripts/run_validation.sh"
 
 MAX_ITERATIONS="${MAX_ITERATIONS:-200}"
 SLEEP_SECONDS="${SLEEP_SECONDS:-2}"
+SKIP_VALIDATION="${SKIP_VALIDATION:-0}"
 
 mkdir -p "$RALPH_DIR/results" "$HISTORY_DIR"
 
@@ -54,15 +55,15 @@ while true; do
   echo "=== Running iteration $iteration/$MAX_ITERATIONS at $(date) ==="
   echo "Current status: ${status:-unknown}"
 
-  prompt="$(cat "$PROMPT_FILE")"
-  run_log="$HISTORY_DIR/iteration_${iteration}_$(date +%Y%m%d_%H%M%S).log"
-  codex exec "$prompt" --model gpt-5.2-codex --full-auto --config model_reasoning_effort="xhigh" | tee "$run_log"
-
   if [ -x "$VALIDATION_RUNNER" ]; then
-    "$VALIDATION_RUNNER" || true
+    SKIP_VALIDATION="$SKIP_VALIDATION" "$VALIDATION_RUNNER" || true
   else
     echo "Missing validation runner: $VALIDATION_RUNNER" >&2
   fi
+
+  prompt="$(cat "$PROMPT_FILE")"
+  run_log="$HISTORY_DIR/iteration_${iteration}_$(date +%Y%m%d_%H%M%S).log"
+  codex exec "$prompt" --model gpt-5.2-codex --full-auto --config model_reasoning_effort="xhigh" | tee "$run_log"
 
   if [ -f "$RESULT_FILE" ]; then
     echo "Latest results written to $RESULT_FILE"

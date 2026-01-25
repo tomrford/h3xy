@@ -16,4 +16,7 @@ Key files
 Environment
 - MAX_ITERATIONS (default 200)
 - SLEEP_SECONDS (default 2)
+- SKIP_VALIDATION (default 0; set 1 to skip full validation suite)
 - VALIDATION_CMD (optional; overrides validation suite command)
+- TEST_CMD (optional; overrides test suite command)
+- NIX_CMD (optional; runs commands inside a nix dev shell, e.g. "nix develop -c")

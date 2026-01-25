@@ -19,10 +19,10 @@ What to do each run
 1) Read ralph/results/latest_result.md and pick one failure to fix.
 2) Understand the failure. If behavior is ambiguous, consult ReferenceManual_HexView.pdf.
 3) Fix the root cause (not a band-aid). Add a regression test when it fits.
-4) Optionally rerun a targeted test or a helper script that parallels HexView vs cargo run.
+4) Prefer targeted tests (unit/integration or a single compare.sh case). Do not run the full validation suite; the outer loop handles it.
 5) Update ralph/status.md with progress, assumptions, and next focus.
 
 Validation
-- The loop runs scripts/run_validation.sh after each iteration.
-- For manual runs: scripts/run_validation.sh
-- External suite: set VALIDATION_CMD or add scripts/validation_suite.sh
+- The loop runs scripts/run_validation.sh before each iteration.
+- Full validation requires the WSL HexView environment; do not run it here unless instructed.
+- Manual: scripts/run_validation.sh (set TEST_CMD for targeted tests, SKIP_VALIDATION=0 to allow suite).
