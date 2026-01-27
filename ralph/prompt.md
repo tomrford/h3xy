@@ -26,3 +26,4 @@ Validation
 - The loop runs scripts/run_validation.sh before each iteration.
 - Full validation requires the WSL HexView environment; do not run it here unless instructed.
 - Manual: scripts/run_validation.sh (set TEST_CMD for targeted tests, SKIP_VALIDATION=0 to allow suite).
+- If validation fails due to HexView/compare.sh execution errors (exit code 2), do not modify validation wiring; mark blocked and report for Tom to fix.

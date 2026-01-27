@@ -72,6 +72,7 @@ cargo run -- [args]   # Run CLI
 - `/P` INI path now parsed; `/XC` defaults to `<input>.ini` when `/P` not provided.
 - `/XF` Ford I-HEX output implemented using `[FORDHEADER]` INI (mandatory fields enforced, checksum auto-generated, optional erase sector list). Defaults output to `<input>.hex`.
 - `/XP` Porsche output implemented as single-region binary with 16-bit byte-sum appended (big-endian); gaps filled with `/AF` byte and output defaults to `<input>.bin`.
+- Intel-HEX default bytes per line is 32 (HexView parity; do not revert unless HexView behavior changes).
 - Core library tests expanded for merge range ordering, HEX-ASCII `0x` prefixes, binary gap filling, and S-Record auto type selection.
 - Align no longer requires power-of-two; aligns any non-zero value and normalizes overlaps before alignment (HexView behavior).
 - Added HexView multistage integration tests in `tests/hexview_multistage.rs` (fill/merge/align/checksum order).

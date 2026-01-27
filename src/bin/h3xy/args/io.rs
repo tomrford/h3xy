@@ -122,7 +122,7 @@ pub(super) fn write_output(
                 _ => h3xy::IntelHexMode::Auto,
             };
             let options = h3xy::IntelHexWriteOptions {
-                bytes_per_line: bytes_per_line.unwrap_or(16),
+                bytes_per_line: bytes_per_line.unwrap_or(32),
                 mode,
             };
             let output = h3xy::write_intel_hex(hexfile, &options);
@@ -306,7 +306,7 @@ pub(super) fn write_ford_ihex_output(
 
     let header = build_ford_header(args, hexfile, output_path, &ini)?;
     let options = h3xy::IntelHexWriteOptions {
-        bytes_per_line: args.bytes_per_line.unwrap_or(16),
+        bytes_per_line: args.bytes_per_line.unwrap_or(32),
         mode: h3xy::IntelHexMode::Auto,
     };
     let data = h3xy::write_intel_hex(hexfile, &options);

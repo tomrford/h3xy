@@ -32,6 +32,7 @@ class RunConfig:
     # Execution options
     stop_on_first_failure: bool = False
     max_failures: int = 0  # 0 = unlimited
+    max_tests: int = 0  # 0 = unlimited
     verbose: bool = False
     keep_outputs: bool = False
 
@@ -39,6 +40,8 @@ class RunConfig:
     compare_script: Path = field(
         default_factory=lambda: Path("../scripts/compare.sh")
     )
+    compare_use_scratchpad: bool = False
+    compare_copy_inputs: bool = False
 
 
 @dataclass
@@ -204,6 +207,10 @@ class ValidationRunner:
         # Build command
         args = test.to_args(inputs_dir, outputs_dir)
         cmd = [str(compare_script)]
+        if self.config.compare_use_scratchpad:
+            cmd.append("-s")
+        if self.config.compare_copy_inputs:
+            cmd.append("-c")
         if self.config.verbose:
             cmd.append("-v")
         if self.config.keep_outputs:
@@ -273,10 +280,6 @@ class ValidationRunner:
             if result.passed:
                 passed += 1
                 status_char = "."
-            elif result.exit_code == 2:
-                # Execution error (skip)
-                skipped += 1
-                status_char = "S"
             else:
                 failed += 1
                 status_char = "F"
@@ -404,6 +407,8 @@ class ValidationRunner:
 
         # Generate tests
         tests = self.generate_tests(input_files)
+        if self.config.max_tests > 0:
+            tests = tests[: self.config.max_tests]
 
         # Run tests
         result = self.run_tests(tests)
@@ -445,6 +450,10 @@ def main() -> int:
         help="Stop after N failures (0 = unlimited)"
     )
     parser.add_argument(
+        "--max-tests", type=int, default=0,
+        help="Run only first N tests (0 = unlimited)"
+    )
+    parser.add_argument(
         "-v", "--verbose", action="store_true",
         help="Verbose output"
     )
@@ -460,19 +469,40 @@ def main() -> int:
         "--project-root", type=Path, default=Path(".."),
         help="Path to h3xy project root (default: ..)"
     )
+    parser.add_argument(
+        "--inputs-dir", type=Path, default=Path("inputs"),
+        help="Input directory (default: inputs)"
+    )
+    parser.add_argument(
+        "--outputs-dir", type=Path, default=Path("outputs"),
+        help="Output directory (default: outputs)"
+    )
+    parser.add_argument(
+        "--compare-scratchpad", action="store_true",
+        help="Run compare.sh with -s (scratchpad mode)"
+    )
+    parser.add_argument(
+        "--compare-copy-inputs", action="store_true",
+        help="Run compare.sh with -c (copy inputs into scratchpad)"
+    )
 
     args = parser.parse_args()
 
     config = RunConfig(
         seed=args.seed,
+        inputs_dir=args.inputs_dir,
+        outputs_dir=args.outputs_dir,
         random_input_count=args.random_inputs,
         fuzz_tests_per_file=args.fuzz_per_file,
         stop_on_first_failure=args.stop_on_fail,
         max_failures=args.max_failures,
+        max_tests=args.max_tests,
         verbose=args.verbose,
         keep_outputs=args.keep_outputs,
         generate_inputs=not args.no_generate,
         project_root=args.project_root,
+        compare_use_scratchpad=args.compare_scratchpad,
+        compare_copy_inputs=args.compare_copy_inputs,
     )
 
     runner = ValidationRunner(config)

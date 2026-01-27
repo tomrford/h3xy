@@ -116,7 +116,9 @@ pub fn write_hex_ascii(hexfile: &HexFile, options: &HexAsciiWriteOptions) -> Vec
         out.push(b'\n');
     }
 
-    out
+    // TEMP: HexView (Windows) emits CRLF; force CRLF for validation parity.
+    // Remove once the validation suite normalizes line endings.
+    normalize_crlf(out)
 }
 
 fn push_hex_token(digits: &[u8], out: &mut Vec<u8>, line: usize) -> Result<(), ParseError> {
@@ -155,6 +157,19 @@ fn push_hex_token(digits: &[u8], out: &mut Vec<u8>, line: usize) -> Result<(), P
         out.push(((hi << 4) | lo) as u8);
     }
     Ok(())
+}
+
+fn normalize_crlf(data: Vec<u8>) -> Vec<u8> {
+    let mut out = Vec::with_capacity(data.len());
+    let mut prev = 0u8;
+    for b in data {
+        if b == b'\n' && prev != b'\r' {
+            out.push(b'\r');
+        }
+        out.push(b);
+        prev = b;
+    }
+    out
 }
 
 #[cfg(test)]

@@ -14,6 +14,7 @@
 #   -v, --verbose     Show detailed output
 #   -k, --keep        Keep output files after comparison
 #   -s, --scratchpad  Use scratchpad directory for Windows paths (WSL mode)
+#   -c, --copy-input  Copy input file into scratchpad (one-off use)
 #   -h, --help        Show this help message
 #
 # Environment:
@@ -41,6 +42,7 @@ SCRATCHPAD="${SCRATCHPAD:-$PROJECT_ROOT/scratchpad}"
 VERBOSE=0
 KEEP_FILES=0
 USE_SCRATCHPAD=0
+COPY_INPUTS=0
 
 # Colors (if terminal supports them)
 if [[ -t 1 ]]; then
@@ -78,6 +80,89 @@ wsl_to_win_path() {
     fi
 }
 
+resolve_path() {
+    local path="$1"
+    if command -v realpath &>/dev/null; then
+        realpath "$path"
+    else
+        readlink -f "$path" 2>/dev/null || echo "$path"
+    fi
+}
+
+resolve_path() {
+    local path="$1"
+    if command -v realpath &>/dev/null; then
+        realpath "$path"
+    else
+        readlink -f "$path" 2>/dev/null || echo "$path"
+    fi
+}
+
+rewrite_arg_copy() {
+    local arg="$1"
+    local work_dir="$2"
+
+    if [[ -f "$arg" ]]; then
+        local base
+        base="$(basename "$arg")"
+        local dest="$work_dir/$base"
+        if [[ "$arg" != "$dest" ]]; then
+            cp -f "$arg" "$dest"
+        fi
+        echo "$dest"
+        return
+    fi
+
+    if [[ "$arg" =~ ^(/[^:=]+)([:=])(.*)$ ]]; then
+        local prefix="${BASH_REMATCH[1]}"
+        local sep="${BASH_REMATCH[2]}"
+        local rest="${BASH_REMATCH[3]}"
+        local file_part="${rest%%;*}"
+        if [[ -f "$file_part" ]]; then
+            local base
+            base="$(basename "$file_part")"
+            local dest="$work_dir/$base"
+            if [[ "$file_part" != "$dest" ]]; then
+                cp -f "$file_part" "$dest"
+            fi
+            local tail="${rest#"$file_part"}"
+            echo "${prefix}${sep}${dest}${tail}"
+            return
+        fi
+    fi
+
+    echo "$arg"
+}
+
+rewrite_arg_win() {
+    local arg="$1"
+
+    if [[ -f "$arg" ]]; then
+        local resolved
+        resolved="$(resolve_path "$arg")"
+        wsl_to_win_path "$resolved"
+        return
+    fi
+
+    if [[ "$arg" =~ ^(/[^:=]+)([:=])(.*)$ ]]; then
+        local prefix="${BASH_REMATCH[1]}"
+        local sep="${BASH_REMATCH[2]}"
+        local rest="${BASH_REMATCH[3]}"
+        local file_part="${rest%%;*}"
+        if [[ -f "$file_part" ]]; then
+            local resolved
+            resolved="$(resolve_path "$file_part")"
+            local win_file
+            win_file="$(wsl_to_win_path "$resolved")"
+            local tail="${rest#"$file_part"}"
+            echo "${prefix}${sep}${win_file}${tail}"
+            return
+        fi
+    fi
+
+    echo "$arg"
+}
+
 # Check if running in WSL
 is_wsl() {
     [[ -f /proc/version ]] && grep -qi microsoft /proc/version
@@ -101,6 +186,7 @@ while [[ $# -gt 0 ]]; do
         -v|--verbose) VERBOSE=1; shift ;;
         -k|--keep) KEEP_FILES=1; shift ;;
         -s|--scratchpad) USE_SCRATCHPAD=1; shift ;;
+        -c|--copy-input) COPY_INPUTS=1; shift ;;
         -h|--help) usage 0 ;;
         --) shift; HEXVIEW_ARGS=("$@"); break ;;
         *) HEXVIEW_ARGS+=("$1"); shift ;;
@@ -132,8 +218,43 @@ find_output_arg() {
             # Filename is part of this arg
             echo "${BASH_REMATCH[2]}"
             return 0
+        elif [[ "$arg" =~ ^-o(.+)$ && "$arg" != "-offset" ]]; then
+            # -o<file> (no separator); avoid -offset
+            echo "${BASH_REMATCH[1]}"
+            return 0
+        elif [[ "$arg" =~ ^/[Oo](.+)$ ]]; then
+            # /O<file> (no separator)
+            echo "${BASH_REMATCH[1]}"
+            return 0
         fi
-        ((i++))
+        i=$((i + 1))
+    done
+    return 1
+}
+
+# Detect output format flags (HexView-style)
+has_output_format() {
+    local args=("$@")
+    local arg
+    for arg in "${args[@]}"; do
+        case "$arg" in
+            /X*|/x*) return 0 ;;
+        esac
+    done
+    return 1
+}
+
+# Find first input file in args (returns "index:path")
+find_input_arg_index() {
+    local args=("$@")
+    local i=0
+    while [[ $i -lt ${#args[@]} ]]; do
+        local arg="${args[$i]}"
+        if [[ -f "$arg" ]]; then
+            echo "${i}:${arg}"
+            return 0
+        fi
+        i=$((i + 1))
     done
     return 1
 }
@@ -143,8 +264,9 @@ OUTPUT_FILE=$(find_output_arg "${HEXVIEW_ARGS[@]}") || {
     exit 3
 }
 
-OUTPUT_BASE="${OUTPUT_FILE%.*}"
-OUTPUT_EXT="${OUTPUT_FILE##*.}"
+OUTPUT_FILENAME="$(basename "$OUTPUT_FILE")"
+OUTPUT_BASE="${OUTPUT_FILENAME%.*}"
+OUTPUT_EXT="${OUTPUT_FILENAME##*.}"
 [[ "$OUTPUT_EXT" == "$OUTPUT_FILE" ]] && OUTPUT_EXT=""  # no extension
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -187,13 +309,17 @@ replace_output_in_args() {
         local arg="${args[$i]}"
         if [[ "$arg" =~ ^(-o|/[Oo])$ ]]; then
             result+=("$arg" "$new_output")
-            ((i++))  # skip the original filename
+            i=$((i + 1))  # skip the original filename
         elif [[ "$arg" =~ ^(-o|/[Oo])[=:](.+)$ ]]; then
             result+=("-o" "$new_output")
+        elif [[ "$arg" =~ ^-o(.+)$ && "$arg" != "-offset" ]]; then
+            result+=("-o$new_output")
+        elif [[ "$arg" =~ ^/[Oo](.+)$ ]]; then
+            result+=("/O$new_output")
         else
             result+=("$arg")
         fi
-        ((i++))
+        i=$((i + 1))
     done
 
     printf '%s\n' "${result[@]}"
@@ -215,18 +341,55 @@ run_hexview() {
     local hexview_args
     mapfile -t hexview_args < <(replace_output_in_args "$HEXVIEW_OUT" "${HEXVIEW_ARGS[@]}")
 
+    # Ensure HexView runs in silent mode (avoid GUI)
+    local has_s=0
+    local arg
+    for arg in "${hexview_args[@]}"; do
+        if [[ "$arg" == "-s" || "$arg" == "/s" || "$arg" == "/S" ]]; then
+            has_s=1
+            break
+        fi
+    done
+    if [[ $has_s -eq 0 ]]; then
+        hexview_args=("-s" "${hexview_args[@]}")
+    fi
+
+    # Default to Intel HEX output when no explicit /X* output format is set.
+    # This mirrors h3xy CLI default output format.
+    if ! has_output_format "${hexview_args[@]}"; then
+        local input_info
+        input_info="$(find_input_arg_index "${hexview_args[@]}" || true)"
+        if [[ -n "$input_info" ]]; then
+            local input_idx="${input_info%%:*}"
+            hexview_args=(
+                "${hexview_args[@]:0:$((input_idx + 1))}"
+                "/XI"
+                "${hexview_args[@]:$((input_idx + 1))}"
+            )
+        else
+            hexview_args=("/XI" "${hexview_args[@]}")
+        fi
+    fi
+
+    # Optional input copy into scratchpad for one-off comparisons
+    if [[ $USE_SCRATCHPAD -eq 1 && $COPY_INPUTS -eq 1 ]]; then
+        local copied_args=()
+        local arg
+        for arg in "${hexview_args[@]}"; do
+            copied_args+=("$(rewrite_arg_copy "$arg" "$WORK_DIR")")
+        done
+        hexview_args=("${copied_args[@]}")
+    fi
+
     # For WSL, we may need to convert paths for input/output files
     if is_wsl && [[ $USE_SCRATCHPAD -eq 1 ]]; then
-        # Convert output path to Windows format
-        local win_out
-        win_out=$(wsl_to_win_path "$HEXVIEW_OUT")
-        mapfile -t hexview_args < <(replace_output_in_args "$win_out" "${HEXVIEW_ARGS[@]}")
-
-        # Also convert input file if it's a path
-        local first_arg="${hexview_args[0]}"
-        if [[ -f "$first_arg" ]]; then
-            hexview_args[0]=$(wsl_to_win_path "$first_arg")
-        fi
+        # Convert all file args to Windows format (including merge inputs)
+        local win_args=()
+        local arg
+        for arg in "${hexview_args[@]}"; do
+            win_args+=("$(rewrite_arg_win "$arg")")
+        done
+        hexview_args=("${win_args[@]}")
     fi
 
     log_verbose "HexView args: ${hexview_args[*]}"

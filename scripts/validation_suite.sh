@@ -23,5 +23,13 @@ if [ -z "${XDG_CACHE_HOME:-}" ]; then
 fi
 export UV_CACHE_DIR="${UV_CACHE_DIR:-$XDG_CACHE_HOME/uv}"
 
+if [ -z "$VALIDATION_ARGS" ]; then
+  SCRATCHPAD="${SCRATCHPAD:-$ROOT_DIR/scratchpad}"
+  if [ -e "$SCRATCHPAD" ]; then
+    SCRATCHPAD_REAL="$(readlink -f "$SCRATCHPAD")"
+    VALIDATION_ARGS="--inputs-dir $SCRATCHPAD_REAL/validation_inputs --outputs-dir $SCRATCHPAD_REAL/validation_outputs --compare-scratchpad"
+  fi
+fi
+
 cd "$ROOT_DIR/validation"
 uv run python main.py $VALIDATION_ARGS
