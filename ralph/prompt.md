@@ -17,7 +17,7 @@ Loop contract
 
 What to do each run
 1) Read ralph/results/latest_result.md and pick one failure to fix.
-2) Understand the failure. If behavior is ambiguous, consult ReferenceManual_HexView.pdf.
+2) Understand the failure. If behavior is ambiguous, consult ReferenceManual_HexView.txt.
 3) Fix the root cause (not a band-aid). Add a regression test when it fits.
 4) Prefer targeted tests (unit/integration or a single compare.sh case). Do not run the full validation suite; the outer loop handles it.
 5) Update ralph/status.md with progress, assumptions, and next focus.
@@ -26,4 +26,8 @@ Validation
 - The loop runs scripts/run_validation.sh before each iteration.
 - Full validation requires the WSL HexView environment; do not run it here unless instructed.
 - Manual: scripts/run_validation.sh (set TEST_CMD for targeted tests, SKIP_VALIDATION=0 to allow suite).
-- If validation fails due to HexView/compare.sh execution errors (exit code 2), do not modify validation wiring; mark blocked and report for Tom to fix.
+
+Exit codes from compare.sh
+- 0 = outputs match (pass)
+- 1 = outputs differ (real mismatch to fix)
+- 2 = execution error (HexView/compare.sh failed; mark blocked for Tom)
