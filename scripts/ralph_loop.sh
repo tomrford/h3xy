@@ -63,7 +63,7 @@ while true; do
 
   prompt="$(cat "$PROMPT_FILE")"
   run_log="$HISTORY_DIR/iteration_${iteration}_$(date +%Y%m%d_%H%M%S).log"
-  claude -p "$prompt" --dangerously-skip-permissions | tee "$run_log"
+  echo "$prompt" | claude --dangerously-skip-permissions 2>&1 | tee "$run_log"
 
   if [ -f "$RESULT_FILE" ]; then
     echo "Latest results written to $RESULT_FILE"
