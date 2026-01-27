@@ -63,7 +63,7 @@ while true; do
 
   prompt="$(cat "$PROMPT_FILE")"
   run_log="$HISTORY_DIR/iteration_${iteration}_$(date +%Y%m%d_%H%M%S).log"
-  codex exec "$prompt" --model gpt-5.2-codex --full-auto --config model_reasoning_effort="xhigh" | tee "$run_log"
+  claude -p "$prompt" --dangerously-skip-permissions | tee "$run_log"
 
   if [ -f "$RESULT_FILE" ]; then
     echo "Latest results written to $RESULT_FILE"

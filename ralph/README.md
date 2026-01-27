@@ -1,7 +1,7 @@
 # Ralph loop
 
 Purpose
-- Run codex in a bounded loop with persistent memory and automated validation.
+- Run claude code in a bounded loop with persistent memory and automated validation.
 - Keep behavior aligned with HexView through repeated test + validation runs.
 
 How to run
