@@ -80,34 +80,46 @@ fn align_up(len: u32, alignment: u32) -> u32 {
 impl HexFile {
     /// Align all segment start addresses to multiples of alignment.
     /// Prepends fill bytes as needed. Optionally aligns lengths too.
-    /// Operates on a normalized (last-wins) snapshot.
+    /// Fill bytes are LOW priority (existing data wins on overlap).
     pub fn align(&mut self, options: &AlignOptions) -> Result<(), OpsError> {
         if !is_valid_alignment(options.alignment) {
             return Err(OpsError::InvalidAlignment(options.alignment));
         }
 
-        let mut normalized = self.normalized_lossy();
-        for segment in normalized.segments_mut() {
+        // Work on a normalized snapshot to merge any existing overlaps
+        let normalized = self.normalized_lossy();
+        let mut result = HexFile::new();
+
+        // First, add fill segments as LOW priority (prepend = loses on overlap)
+        for segment in normalized.segments() {
             let aligned_start = align_down(segment.start_address, options.alignment);
 
             if aligned_start < segment.start_address {
-                let prepend_count = (segment.start_address - aligned_start) as usize;
-                let mut new_data = vec![options.fill_byte; prepend_count];
-                new_data.append(&mut segment.data);
-                segment.data = new_data;
-                segment.start_address = aligned_start;
+                // Create fill segment for the alignment gap
+                let fill_len = (segment.start_address - aligned_start) as usize;
+                let fill_data = vec![options.fill_byte; fill_len];
+                result.prepend_segment(Segment::new(aligned_start, fill_data));
             }
 
             if options.align_length {
-                let current_len = segment.data.len() as u32;
-                let aligned_len = align_up(current_len, options.alignment);
-                if aligned_len > current_len {
-                    segment.data.resize(aligned_len as usize, options.fill_byte);
+                let end_addr = segment.end_address().saturating_add(1);
+                let aligned_end = align_up(end_addr, options.alignment);
+                if aligned_end > end_addr {
+                    // Create fill segment for length alignment
+                    let fill_len = (aligned_end - end_addr) as usize;
+                    let fill_data = vec![options.fill_byte; fill_len];
+                    result.prepend_segment(Segment::new(end_addr, fill_data));
                 }
             }
         }
 
-        self.set_segments(normalized.into_segments());
+        // Then add original data as HIGH priority (append = wins on overlap)
+        for segment in normalized.into_segments() {
+            result.append_segment(segment);
+        }
+
+        // Normalize to merge fill with data (original data wins on overlap)
+        self.set_segments(result.normalized_lossy().into_segments());
         Ok(())
     }
 
@@ -137,18 +149,12 @@ impl HexFile {
     }
 
     /// Swap bytes within all segments (operates on raw segments).
+    /// Swaps complete chunks only; trailing bytes (when length not multiple of swap size) are left unchanged.
     pub fn swap_bytes(&mut self, mode: SwapMode) -> Result<(), OpsError> {
         let size = mode.size();
 
         for segment in self.segments_mut() {
-            if segment.data.len() % size != 0 {
-                return Err(OpsError::LengthNotMultiple {
-                    length: segment.data.len(),
-                    expected: size,
-                    operation: format!("{mode:?} swap at {:#X}", segment.start_address),
-                });
-            }
-
+            // Swap only complete chunks; trailing bytes are left unchanged (HexView behavior)
             for chunk in segment.data.chunks_exact_mut(size) {
                 chunk.reverse();
             }
@@ -629,11 +635,13 @@ mod tests {
     }
 
     #[test]
-    fn test_swap_odd_length_error() {
+    fn test_swap_odd_length_leaves_trailing() {
+        // Odd-length segments: swap complete pairs, leave trailing byte unchanged
         let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0xAA, 0xBB, 0xCC])]);
-        let result = hf.swap_bytes(SwapMode::Word);
+        hf.swap_bytes(SwapMode::Word).unwrap();
 
-        assert!(matches!(result, Err(OpsError::LengthNotMultiple { .. })));
+        // AA BB swapped to BB AA, CC left unchanged
+        assert_eq!(hf.segments()[0].data, vec![0xBB, 0xAA, 0xCC]);
     }
 
     #[test]
@@ -678,6 +686,7 @@ mod tests {
 
     #[test]
     fn test_align_causes_overlap() {
+        // Two segments that will both align to 0x1000
         let mut hf = HexFile::with_segments(vec![
             Segment::new(0x1001, vec![0xAA]),
             Segment::new(0x1003, vec![0xBB]),
@@ -688,11 +697,14 @@ mod tests {
             align_length: false,
         })
         .unwrap();
-        // Both now start at 0x1000 - overlap
-        assert!(hf.normalized().is_err());
-        // But normalized_lossy should work (last wins)
-        let norm = hf.normalized_lossy();
-        assert_eq!(norm.segments().len(), 1);
+
+        // Align now resolves overlaps internally with original data winning
+        // Result: single segment 0x1000-0x1003 with [0xFF, 0xAA, 0xFF, 0xBB]
+        // (fill at 0x1000, data at 0x1001, fill at 0x1002, data at 0x1003)
+        assert_eq!(hf.segments().len(), 1);
+        let seg = &hf.segments()[0];
+        assert_eq!(seg.start_address, 0x1000);
+        assert_eq!(seg.data, vec![0xFF, 0xAA, 0xFF, 0xBB]);
     }
 
     #[test]

@@ -48,13 +48,13 @@ def format_data_records(
     address: int, data: bytes, bytes_per_line: int = 16
 ) -> Iterator[str]:
     """Generate data records for a block of data, handling extended addressing."""
-    current_extended = None
+    current_extended = 0  # Start assuming upper address is 0 (no ext record needed)
     offset = 0
 
     while offset < len(data):
         abs_addr = address + offset
 
-        # Check if we need extended linear address record
+        # Check if we need extended linear address record (only when upper address changes)
         upper_addr = (abs_addr >> 16) & 0xFFFF
         if upper_addr != current_extended:
             current_extended = upper_addr

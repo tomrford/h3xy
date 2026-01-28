@@ -232,7 +232,8 @@ class HexGenerator:
         specs = []
         addr = 0
         for _ in range(num_segments):
-            size = self.rng.randint(16, 128)
+            # Force even sizes to avoid HexView /SWAPWORD bug with odd-length records
+            size = self.rng.randint(8, 64) * 2  # 16-128, always even
             specs.append((addr, size))
             addr += size + self.rng.randint(32, 256)  # Random gap
         return self.gen_multi_segment(name, specs)
@@ -367,9 +368,10 @@ class HexGenerator:
         specs = []
         addr = base
         for _ in range(num_segments):
-            size = self.rng.randint(
-                self.config.min_segment_size, self.config.max_segment_size
-            )
+            # Force even sizes to avoid HexView /SWAPWORD bug with odd-length records
+            min_half = self.config.min_segment_size // 2
+            max_half = self.config.max_segment_size // 2
+            size = self.rng.randint(min_half, max_half) * 2  # Always even
 
             # Align address
             if alignment > 1:

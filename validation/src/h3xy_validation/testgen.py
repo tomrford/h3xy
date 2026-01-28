@@ -108,7 +108,7 @@ class TestCaseGenerator:
         return TestCase(
             name=name,
             input_file=input_file,
-            args=[f"/AR:'{self.fmt_range_se(start, end)}'"],
+            args=[f"/AR:{self.fmt_range_se(start, end)}"],
             output_name=f"{name}.hex",
             description=f"Filter to range {start:#x}-{end:#x}",
         )
@@ -144,7 +144,7 @@ class TestCaseGenerator:
         return TestCase(
             name=name,
             input_file=input_file,
-            args=[f"/CR:'{self.fmt_range_se(start, end)}'"],
+            args=[f"/CR:{self.fmt_range_se(start, end)}"],
             output_name=f"{name}.hex",
             description=f"Cut range {start:#x}-{end:#x}",
         )
@@ -184,7 +184,7 @@ class TestCaseGenerator:
             name=name,
             input_file=input_file,
             args=[
-                f"/FR:'{self.fmt_range_sl(start, length)}'",
+                f"/FR:{self.fmt_range_sl(start, length)}",
                 f"/FP:{pattern}",
             ],
             output_name=f"{name}.hex",
@@ -385,7 +385,7 @@ class TestCaseGenerator:
             input_file=input_file,
             args=[
                 f"{crc_type}:@{self.fmt_addr(target_addr)}",
-                f"/CSR:'{self.fmt_range_se(range_start, range_end)}'",
+                f"/CSR:{self.fmt_range_se(range_start, range_end)}",
             ],
             output_name=f"{name}.hex",
             description=f"CRC over range {range_start:#x}-{range_end:#x}",
@@ -403,12 +403,12 @@ class TestCaseGenerator:
         """CRC excluding specific range."""
         stem = Path(input_file).stem
         name = f"crc_excl_{stem}_{exclude_start:x}_{exclude_end:x}{suffix}"
+        # Exclude is specified with ;/ separator: /CS0:@addr;/exclude_range
         return TestCase(
             name=name,
             input_file=input_file,
             args=[
-                f"{crc_type}:@{self.fmt_addr(target_addr)}",
-                f"/CSE:'{self.fmt_range_se(exclude_start, exclude_end)}'",
+                f"{crc_type}:@{self.fmt_addr(target_addr)};/{self.fmt_range_se(exclude_start, exclude_end)}",
             ],
             output_name=f"{name}.hex",
             description=f"CRC excluding {exclude_start:#x}-{exclude_end:#x}",
@@ -579,66 +579,6 @@ class TestCaseGenerator:
         )
 
     # ─────────────────────────────────────────────────────────────────────
-    # Address scaling (/AM, /AD)
-    # ─────────────────────────────────────────────────────────────────────
-
-    def gen_address_multiply(
-        self, input_file: str, factor: int, suffix: str = ""
-    ) -> TestCase:
-        """Multiply addresses by factor."""
-        stem = Path(input_file).stem
-        name = f"am_{stem}_{factor}{suffix}"
-        return TestCase(
-            name=name,
-            input_file=input_file,
-            args=[f"/AM:{factor}"],
-            output_name=f"{name}.hex",
-            description=f"Multiply addresses by {factor}",
-        )
-
-    def gen_address_divide(
-        self, input_file: str, divisor: int, suffix: str = ""
-    ) -> TestCase:
-        """Divide addresses by divisor."""
-        stem = Path(input_file).stem
-        name = f"ad_{stem}_{divisor}{suffix}"
-        return TestCase(
-            name=name,
-            input_file=input_file,
-            args=[f"/AD:{divisor}"],
-            output_name=f"{name}.hex",
-            description=f"Divide addresses by {divisor}",
-        )
-
-    def gen_address_offset(
-        self, input_file: str, offset: int, suffix: str = ""
-    ) -> TestCase:
-        """Add offset to all addresses."""
-        stem = Path(input_file).stem
-        name = f"ao_{stem}_{offset:x}{suffix}"
-        return TestCase(
-            name=name,
-            input_file=input_file,
-            args=[f"/AO:{self.fmt_addr(offset)}"],
-            output_name=f"{name}.hex",
-            description=f"Add offset {offset:#x} to addresses",
-        )
-
-    def gen_address_scale_variants(self, input_file: str) -> list[TestCase]:
-        """Generate address scaling variants."""
-        tests = []
-
-        # Multiply
-        for factor in [2, 4]:
-            tests.append(self.gen_address_multiply(input_file, factor))
-
-        # Offset
-        for offset in [0x1000, 0x8000, 0x10000]:
-            tests.append(self.gen_address_offset(input_file, offset))
-
-        return tests
-
-    # ─────────────────────────────────────────────────────────────────────
     # Combined operations
     # ─────────────────────────────────────────────────────────────────────
 
@@ -652,7 +592,7 @@ class TestCaseGenerator:
             name=name,
             input_file=input_file,
             args=[
-                f"/AR:'{self.fmt_range_se(start, end)}'",
+                f"/AR:{self.fmt_range_se(start, end)}",
                 "/FA",
                 f"/FP:{pattern}",
             ],
@@ -702,8 +642,8 @@ class TestCaseGenerator:
             name=name,
             input_file=input_file,
             args=[
-                f"/AR:'{self.fmt_range_se(ar_start, ar_end)}'",
-                f"/CR:'{self.fmt_range_se(cr_start, cr_end)}'",
+                f"/AR:{self.fmt_range_se(ar_start, ar_end)}",
+                f"/CR:{self.fmt_range_se(cr_start, cr_end)}",
             ],
             output_name=f"{name}.hex",
             description=f"Filter to {ar_start:#x}-{ar_end:#x} then cut {cr_start:#x}-{cr_end:#x}",
@@ -738,7 +678,7 @@ class TestCaseGenerator:
             name=name,
             input_file=input_file,
             args=[
-                f"/AR:'{self.fmt_range_se(start, end)}'",
+                f"/AR:{self.fmt_range_se(start, end)}",
                 "/FA",
                 "/FP:FF",
                 f"/SB:{self.fmt_addr(split_size)}",
@@ -757,7 +697,7 @@ class TestCaseGenerator:
             name=name,
             input_file=input_file,
             args=[
-                f"/FR:'{self.fmt_range_sl(fill_start, fill_len)}'",
+                f"/FR:{self.fmt_range_sl(fill_start, fill_len)}",
                 "/FP:00",
                 f"/CS0:@{self.fmt_addr(crc_addr)}",
             ],
@@ -812,20 +752,20 @@ class TestCaseGenerator:
         if self.rng.random() < 0.3:
             start = self.rng.randint(0, 0x0800)
             length = self.rng.randint(0x100, 0x1000)
-            ops.append(f"/AR:'{self.fmt_range_sl(start, length)}'")
+            ops.append(f"/AR:{self.fmt_range_sl(start, length)}")
 
         # Maybe cut range
         if self.rng.random() < 0.2:
             start = self.rng.randint(0, 0x0400)
             length = self.rng.randint(0x10, 0x100)
-            ops.append(f"/CR:'{self.fmt_range_sl(start, length)}'")
+            ops.append(f"/CR:{self.fmt_range_sl(start, length)}")
 
         # Maybe fill
         if self.rng.random() < 0.3:
             start = self.rng.randint(0, 0x0800)
             length = self.rng.randint(0x10, 0x200)
             pattern = self.rng.choice(["00", "FF", "AA", "55", "DEADBEEF"])
-            ops.append(f"/FR:'{self.fmt_range_sl(start, length)}'")
+            ops.append(f"/FR:{self.fmt_range_sl(start, length)}")
             ops.append(f"/FP:{pattern}")
 
         # Maybe fill all
@@ -850,16 +790,6 @@ class TestCaseGenerator:
         if self.rng.random() < 0.15:
             ops.append(self.rng.choice(["/SWAPWORD", "/SWAPLONG"]))
 
-        # Maybe address offset
-        if self.rng.random() < 0.15:
-            offset = self.rng.choice([0x1000, 0x4000, 0x8000])
-            ops.append(f"/AO:{self.fmt_addr(offset)}")
-
-        # Maybe address multiply
-        if self.rng.random() < 0.1:
-            factor = self.rng.choice([2, 4])
-            ops.append(f"/AM:{factor}")
-
         # Maybe CRC (at end, after other ops)
         if self.rng.random() < 0.25:
             addr = self.rng.choice([0x00FC, 0x01FC, 0x0FFC, 0x1FFC])
@@ -869,7 +799,7 @@ class TestCaseGenerator:
             # Maybe add range restriction
             if self.rng.random() < 0.3:
                 range_end = addr - 4
-                ops.append(f"/CSR:'{self.fmt_range_se(0, range_end)}'")
+                ops.append(f"/CSR:{self.fmt_range_se(0, range_end)}")
 
         # Maybe change output format
         if self.rng.random() < 0.2:
@@ -887,7 +817,7 @@ class TestCaseGenerator:
 
         # Ensure at least one operation
         if not ops:
-            ops.append(f"/AR:'{self.fmt_range_se(0, 0xFF)}'")
+            ops.append(f"/AR:{self.fmt_range_se(0, 0xFF)}")
 
         return TestCase(
             name=name,
@@ -937,9 +867,6 @@ class TestCaseGenerator:
 
             # Output format variants (different bytes/line, S-Record, binary)
             tests.extend(self.gen_output_format_variants(input_file))
-
-            # Address scaling variants (multiply, offset)
-            tests.extend(self.gen_address_scale_variants(input_file))
 
             # Combined operations (multi-step pipelines)
             tests.extend(self.gen_combined_variants(input_file))

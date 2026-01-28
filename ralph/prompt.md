@@ -30,4 +30,4 @@ Validation
 Exit codes from compare.sh
 - 0 = outputs match (pass)
 - 1 = outputs differ (real mismatch to fix)
-- 2 = execution error (HexView/compare.sh failed; mark blocked for Tom)
+- 2 = execution error (HexView/compare.sh failed)

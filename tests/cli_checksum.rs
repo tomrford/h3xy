@@ -46,31 +46,37 @@ fn test_cli_checksum_upfront() {
 
 #[test]
 fn test_cli_checksum_begin() {
+    // @begin writes checksum at start of data (0x1000-0x1001), excluding those bytes
+    // Sum of 0x03 + 0x04 = 0x07, BE format = [0x00, 0x07]
     let hexfile = run_checksum_hex(&[0x01, 0x02, 0x03, 0x04], "/CS0:@begin");
     let norm = hexfile.normalized_lossy();
     assert_eq!(
         norm.read_bytes_contiguous(0x1000, 4).unwrap(),
-        vec![0x00, 0x0A, 0x03, 0x04]
+        vec![0x00, 0x07, 0x03, 0x04]
     );
 }
 
 #[test]
 fn test_cli_checksum_overwrite_end() {
+    // @end writes checksum at end of data (0x1002-0x1003), excluding those bytes
+    // Sum of 0x01 + 0x02 = 0x03, BE format = [0x00, 0x03]
     let hexfile = run_checksum_hex(&[0x01, 0x02, 0x03, 0x04], "/CS0:@end");
     let norm = hexfile.normalized_lossy();
     assert_eq!(
         norm.read_bytes_contiguous(0x1000, 4).unwrap(),
-        vec![0x01, 0x02, 0x00, 0x0A]
+        vec![0x01, 0x02, 0x00, 0x03]
     );
 }
 
 #[test]
 fn test_cli_checksum_address() {
+    // @0x1001 writes checksum at 0x1001-0x1002, excluding those bytes
+    // Sum of 0x01 + 0x04 = 0x05, BE format = [0x00, 0x05]
     let hexfile = run_checksum_hex(&[0x01, 0x02, 0x03, 0x04], "/CS0:@0x1001");
     let norm = hexfile.normalized_lossy();
     assert_eq!(
         norm.read_bytes_contiguous(0x1000, 4).unwrap(),
-        vec![0x01, 0x00, 0x0A, 0x04]
+        vec![0x01, 0x00, 0x05, 0x04]
     );
 }
 

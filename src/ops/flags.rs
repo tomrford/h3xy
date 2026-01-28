@@ -199,6 +199,7 @@ pub fn flag_checksum(
         little_endian_output,
         forced_range,
         exclude_ranges: exclude_ranges.to_vec(),
+        target_exclude: None, // Set by checksum() based on target
     };
     with_ctx(context, hexfile.checksum(&options, target))
 }

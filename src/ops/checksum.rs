@@ -91,6 +91,19 @@ impl ChecksumAlgorithm {
             _ => 2,
         }
     }
+
+    /// Whether this algorithm's native output format is little-endian.
+    /// Algorithms ending in "LE" or "Le" output little-endian by default.
+    pub fn native_little_endian(&self) -> bool {
+        matches!(
+            self,
+            Self::ByteSumLe
+                | Self::WordSumLe
+                | Self::WordSumLeTwosComplement
+                | Self::Crc16CcittLe
+                | Self::Crc16CcittLeInit0
+        )
+    }
 }
 
 /// Options for checksum calculation.
@@ -101,6 +114,9 @@ pub struct ChecksumOptions {
     pub little_endian_output: bool,
     pub forced_range: Option<ForcedRange>,
     pub exclude_ranges: Vec<Range>,
+    /// When set, this address range is excluded from the checksum calculation.
+    /// Used internally when the checksum target is an address within the data.
+    pub target_exclude: Option<Range>,
 }
 
 impl Default for ChecksumOptions {
@@ -111,6 +127,7 @@ impl Default for ChecksumOptions {
             little_endian_output: false,
             forced_range: None,
             exclude_ranges: Vec::new(),
+            target_exclude: None,
         }
     }
 }
@@ -119,8 +136,19 @@ impl HexFile {
     /// Calculate checksum over the hex file data.
     /// Returns the checksum bytes in the specified endianness.
     /// Uses a normalized (last-wins) snapshot for overlap resolution.
+    ///
+    /// Output byte order is determined by:
+    /// - The algorithm's native format (e.g., ByteSumLe = LE, ByteSumBe = BE)
+    /// - XOR'd with `little_endian_output` (true when /CSR is used)
+    ///
+    /// Example: /CS1 = ByteSumLe (native LE), little_endian_output=false -> LE
+    ///          /CSR1 = ByteSumLe (native LE), little_endian_output=true -> BE
     pub fn calculate_checksum(&self, options: &ChecksumOptions) -> Result<Vec<u8>, OpsError> {
         let data = self.collect_data_for_checksum(options)?;
+
+        // Effective endianness: algorithm's native XOR reversed flag
+        // /CS uses algorithm's native format, /CSR inverts it
+        let use_le = options.algorithm.native_little_endian() ^ options.little_endian_output;
 
         fn u16_bytes(value: u16, little_endian: bool) -> Vec<u8> {
             if little_endian {
@@ -139,64 +167,52 @@ impl HexFile {
         }
 
         let result = match options.algorithm {
-            ChecksumAlgorithm::ByteSumBe => {
+            ChecksumAlgorithm::ByteSumBe | ChecksumAlgorithm::ByteSumLe => {
                 let sum = byte_sum(&data);
-                u16_bytes(sum, options.little_endian_output)
-            }
-            ChecksumAlgorithm::ByteSumLe => {
-                let sum = byte_sum(&data);
-                u16_bytes(sum, options.little_endian_output)
+                u16_bytes(sum, use_le)
             }
             ChecksumAlgorithm::WordSumBe => {
                 let sum = word_sum_be(&data)?;
-                u16_bytes(sum, options.little_endian_output)
+                u16_bytes(sum, use_le)
             }
             ChecksumAlgorithm::WordSumLe => {
                 let sum = word_sum_le(&data)?;
-                u16_bytes(sum, options.little_endian_output)
+                u16_bytes(sum, use_le)
             }
             ChecksumAlgorithm::ByteSumTwosComplement => {
                 let sum = byte_sum(&data);
                 let twos = (!sum).wrapping_add(1);
-                u16_bytes(twos, options.little_endian_output)
+                u16_bytes(twos, use_le)
             }
             ChecksumAlgorithm::WordSumBeTwosComplement => {
                 let sum = word_sum_be(&data)?;
                 let twos = (!sum).wrapping_add(1);
-                u16_bytes(twos, options.little_endian_output)
+                u16_bytes(twos, use_le)
             }
             ChecksumAlgorithm::WordSumLeTwosComplement => {
                 let sum = word_sum_le(&data)?;
                 let twos = (!sum).wrapping_add(1);
-                u16_bytes(twos, options.little_endian_output)
+                u16_bytes(twos, use_le)
             }
             ChecksumAlgorithm::ModularSum => {
                 let sum = byte_sum(&data);
-                u16_bytes(sum, options.little_endian_output)
+                u16_bytes(sum, use_le)
             }
             ChecksumAlgorithm::Crc16 => {
                 let crc = crc16_arc(&data);
-                u16_bytes(crc, options.little_endian_output)
+                u16_bytes(crc, use_le)
             }
             ChecksumAlgorithm::Crc32 => {
                 let crc = crc32_iso_hdlc(&data);
-                u32_bytes(crc, options.little_endian_output)
+                u32_bytes(crc, use_le)
             }
-            ChecksumAlgorithm::Crc16CcittLe => {
+            ChecksumAlgorithm::Crc16CcittLe | ChecksumAlgorithm::Crc16CcittBe => {
                 let crc = crc16_ibm_sdlc(&data);
-                crc.to_le_bytes().to_vec()
+                u16_bytes(crc, use_le)
             }
-            ChecksumAlgorithm::Crc16CcittBe => {
-                let crc = crc16_ibm_sdlc(&data);
-                crc.to_be_bytes().to_vec()
-            }
-            ChecksumAlgorithm::Crc16CcittLeInit0 => {
+            ChecksumAlgorithm::Crc16CcittLeInit0 | ChecksumAlgorithm::Crc16CcittBeInit0 => {
                 let crc = crc16_xmodem(&data);
-                crc.to_le_bytes().to_vec()
-            }
-            ChecksumAlgorithm::Crc16CcittBeInit0 => {
-                let crc = crc16_xmodem(&data);
-                crc.to_be_bytes().to_vec()
+                u16_bytes(crc, use_le)
             }
         };
 
@@ -209,7 +225,30 @@ impl HexFile {
         options: &ChecksumOptions,
         target: &ChecksumTarget,
     ) -> Result<Vec<u8>, OpsError> {
-        let result = self.calculate_checksum(options)?;
+        // When target overwrites existing data, exclude that range from checksum.
+        // This matches HexView behavior where the checksum target is not included.
+        let mut effective_options = options.clone();
+        let size = options.algorithm.result_size() as u32;
+        match target {
+            ChecksumTarget::Address(addr) => {
+                if let Ok(target_range) = Range::from_start_length(*addr, size) {
+                    effective_options.target_exclude = Some(target_range);
+                }
+            }
+            ChecksumTarget::OverwriteEnd => {
+                // Overwrite end writes at (max_address - size + 1)
+                if let Some(end) = self.max_address() {
+                    let offset = size.saturating_sub(1);
+                    if let Some(write_addr) = end.checked_sub(offset) {
+                        if let Ok(target_range) = Range::from_start_length(write_addr, size) {
+                            effective_options.target_exclude = Some(target_range);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        let result = self.calculate_checksum(&effective_options)?;
 
         match target {
             ChecksumTarget::Address(addr) => {
@@ -306,15 +345,26 @@ impl HexFile {
         }
 
         let mut data = Vec::with_capacity(cap);
+        let has_forced_range = options.forced_range.is_some();
+
         for addr in range.start()..=range.end() {
             if is_excluded(addr, &options.exclude_ranges) {
                 continue;
             }
+            // Exclude target address range (checksum destination)
+            if let Some(ref target_range) = options.target_exclude {
+                if target_range.contains(addr) {
+                    continue;
+                }
+            }
             if let Some(byte) = byte_map.get(&addr) {
                 data.push(*byte);
-            } else {
+            } else if has_forced_range {
+                // Only fill gaps with 0xFF when a forced range is specified.
+                // Without forced range, HexView checksums only actual data (no gap fill).
                 data.push(0xFF);
             }
+            // else: skip addresses with no data (no gap filling without forced range)
         }
 
         Ok(data)
@@ -584,7 +634,8 @@ mod tests {
     #[test]
     fn test_hexfile_checksum_overwrite_end() {
         // Data at 0x1000-0x1003 (4 bytes), checksum is 2 bytes
-        // OverwriteEnd should write at 0x1002-0x1003
+        // OverwriteEnd should write at 0x1002-0x1003, excluding those bytes from calculation
+        // Sum of 0x01 + 0x02 = 0x03, BE = [0x00, 0x03]
         let mut hf =
             HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01, 0x02, 0x03, 0x04])]);
         let options = ChecksumOptions {
@@ -600,8 +651,8 @@ mod tests {
         assert_eq!(norm.segments().len(), 1);
         assert_eq!(norm.min_address(), Some(0x1000));
         assert_eq!(norm.max_address(), Some(0x1003)); // Same end address
-        // First two bytes unchanged, last two overwritten with checksum (0x000A)
-        assert_eq!(norm.segments()[0].data, vec![0x01, 0x02, 0x00, 0x0A]);
+        // First two bytes unchanged, last two overwritten with checksum (0x0003)
+        assert_eq!(norm.segments()[0].data, vec![0x01, 0x02, 0x00, 0x03]);
     }
 
     #[test]
@@ -776,6 +827,7 @@ mod tests {
                 pattern: vec![0xFF],
             }),
             exclude_ranges: Vec::new(),
+            target_exclude: None,
         };
         let result = hf.calculate_checksum(&options).unwrap();
         // 0x01 + 0x02 + 0xFF + 0xFF = 0x0201
@@ -791,6 +843,7 @@ mod tests {
             little_endian_output: false,
             forced_range: None,
             exclude_ranges: vec![Range::from_start_end(0x1001, 0x1002).unwrap()],
+            target_exclude: None,
         };
         let result = hf.calculate_checksum(&options).unwrap();
         // 0x01 + 0x04 = 0x05
