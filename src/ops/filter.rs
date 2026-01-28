@@ -130,6 +130,8 @@ impl HexFile {
     }
 
     /// Fill multiple regions with the specified pattern (operates on raw segments).
+    /// By default, only fills gaps - existing data is preserved.
+    /// When overwrite=true, removes existing data first then fills the entire range.
     pub fn fill_ranges(&mut self, ranges: &[Range], options: &FillOptions) {
         if options.pattern.is_empty() {
             return;
@@ -137,20 +139,83 @@ impl HexFile {
 
         for range in ranges {
             if options.overwrite {
-                // Remove existing data in range, then fill
+                // Remove existing data in range, then fill entire range
                 self.cut(*range);
+                let len = range.length() as usize;
+                let mut data = Vec::with_capacity(len);
+                let pattern = &options.pattern;
+                for i in 0..len {
+                    data.push(pattern[i % pattern.len()]);
+                }
+                self.append_segment(Segment::new(range.start(), data));
+            } else {
+                // Fill only gaps within the range - existing data preserved
+                self.fill_gaps_in_range(*range, &options.pattern);
             }
+        }
+    }
 
-            // Generate the fill data
-            let len = range.length() as usize;
+    /// Fill gaps within a specific range with a pattern. Does not touch existing data.
+    fn fill_gaps_in_range(&mut self, range: Range, pattern: &[u8]) {
+        // Collect existing data segments that overlap with the range
+        let mut occupied: Vec<(u32, u32)> = Vec::new();
+        for segment in self.segments() {
+            let seg_start = segment.start_address;
+            let seg_end = segment.end_address();
+
+            // Check if segment overlaps with range
+            if seg_end >= range.start() && seg_start <= range.end() {
+                let clipped_start = seg_start.max(range.start());
+                let clipped_end = seg_end.min(range.end());
+                occupied.push((clipped_start, clipped_end));
+            }
+        }
+
+        // Sort by start address
+        occupied.sort_by_key(|&(start, _)| start);
+
+        // Merge overlapping/adjacent intervals
+        let mut merged: Vec<(u32, u32)> = Vec::new();
+        for (start, end) in occupied {
+            if let Some(last) = merged.last_mut() {
+                if start <= last.1.saturating_add(1) {
+                    // Overlapping or adjacent - extend
+                    last.1 = last.1.max(end);
+                    continue;
+                }
+            }
+            merged.push((start, end));
+        }
+
+        // Find gaps and fill them
+        let mut cursor = range.start();
+        for (occ_start, occ_end) in merged {
+            if cursor < occ_start {
+                // Gap from cursor to occ_start-1
+                let gap_start = cursor;
+                let gap_end = occ_start - 1;
+                let len = (gap_end - gap_start + 1) as usize;
+                let offset = (gap_start - range.start()) as usize;
+                let mut data = Vec::with_capacity(len);
+                for i in 0..len {
+                    data.push(pattern[(offset + i) % pattern.len()]);
+                }
+                self.append_segment(Segment::new(gap_start, data));
+            }
+            cursor = occ_end.saturating_add(1);
+        }
+
+        // Fill trailing gap if any
+        if cursor <= range.end() {
+            let gap_start = cursor;
+            let gap_end = range.end();
+            let len = (gap_end - gap_start + 1) as usize;
+            let offset = (gap_start - range.start()) as usize;
             let mut data = Vec::with_capacity(len);
-            let pattern = &options.pattern;
             for i in 0..len {
-                data.push(pattern[i % pattern.len()]);
+                data.push(pattern[(offset + i) % pattern.len()]);
             }
-
-            // Prepend so existing data takes priority (low priority fill)
-            self.prepend_segment(Segment::new(range.start(), data));
+            self.append_segment(Segment::new(gap_start, data));
         }
     }
 

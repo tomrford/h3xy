@@ -47,19 +47,50 @@ def format_record(record_type: int, address: int, data: bytes = b"") -> str:
 def format_data_records(
     address: int, data: bytes, bytes_per_line: int = 16
 ) -> Iterator[str]:
-    """Generate data records for a block of data, handling extended addressing."""
-    current_extended = 0  # Start assuming upper address is 0 (no ext record needed)
+    """Generate data records for a block of data, handling extended addressing.
+
+    Uses HexView auto-mode rules:
+    - 16 bits or less: no extended records
+    - 17-20 bits: Extended Segment Address (type 02)
+    - 21-32 bits: Extended Linear Address (type 04)
+    """
+    # Track current extended state: (record_type, value)
+    # record_type: None (no extended yet), 0x02, or 0x04
+    current_ext_type: int | None = None
+    current_ext_value: int = 0
     offset = 0
 
     while offset < len(data):
         abs_addr = address + offset
 
-        # Check if we need extended linear address record (only when upper address changes)
-        upper_addr = (abs_addr >> 16) & 0xFFFF
-        if upper_addr != current_extended:
-            current_extended = upper_addr
-            ext_data = bytes([(upper_addr >> 8) & 0xFF, upper_addr & 0xFF])
-            yield format_record(0x04, 0x0000, ext_data)
+        # Determine which extended address mode is needed
+        if abs_addr <= 0xFFFF:
+            # 16-bit address: no extended record needed (unless we previously
+            # emitted one for higher addresses and wrapped back)
+            needed_ext_type = None
+            needed_ext_value = 0
+        elif abs_addr <= 0xFFFFF:
+            # 17-20 bit address: use Extended Segment Address (type 02)
+            # Segment base = upper 4 bits of 20-bit address, shifted left
+            # Formula: segment_base << 4 = upper 16 bits of effective address
+            # For addr 0x10000-0x1FFFF: segment_base = 0x1000
+            # For addr 0x20000-0x2FFFF: segment_base = 0x2000
+            needed_ext_type = 0x02
+            needed_ext_value = ((abs_addr >> 4) & 0xF000)
+        else:
+            # 21-32 bit address: use Extended Linear Address (type 04)
+            needed_ext_type = 0x04
+            needed_ext_value = (abs_addr >> 16) & 0xFFFF
+
+        # Emit extended record if needed
+        if needed_ext_type is not None and (
+            current_ext_type != needed_ext_type
+            or current_ext_value != needed_ext_value
+        ):
+            current_ext_type = needed_ext_type
+            current_ext_value = needed_ext_value
+            ext_data = bytes([(needed_ext_value >> 8) & 0xFF, needed_ext_value & 0xFF])
+            yield format_record(needed_ext_type, 0x0000, ext_data)
 
         # Data record uses lower 16 bits of address
         record_addr = abs_addr & 0xFFFF

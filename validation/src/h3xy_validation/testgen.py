@@ -550,7 +550,7 @@ class TestCaseGenerator:
         return TestCase(
             name=name,
             input_file=input_file,
-            args=[f"{op}:{{merge_file}}:{self.fmt_addr(offset)}"],
+            args=[f"{op}:{{merge_file}};{self.fmt_addr(offset)}"],
             output_name=f"{name}.hex",
             merge_file=merge_file,
             description=f"Merge with offset {offset:#x}",
@@ -572,7 +572,7 @@ class TestCaseGenerator:
         return TestCase(
             name=name,
             input_file=input_file,
-            args=[f"{op}:{{merge_file}}:-{self.fmt_addr(offset)}"],
+            args=[f"{op}:{{merge_file}};-{self.fmt_addr(offset)}"],
             output_name=f"{name}.hex",
             merge_file=merge_file,
             description=f"Merge with negative offset -{offset:#x}",

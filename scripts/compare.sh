@@ -484,18 +484,38 @@ main() {
     log_verbose "Arguments: ${HEXVIEW_ARGS[*]}"
 
     # Run HexView
+    local hexview_failed=0
     if ! run_hexview; then
-        log_fail "HexView.exe execution failed"
-        return 2
+        hexview_failed=1
+        log_verbose "HexView.exe returned non-zero exit code"
     fi
 
     # Run cargo
+    local cargo_failed=0
     if ! run_cargo; then
-        log_fail "cargo run execution failed"
+        cargo_failed=1
+        log_verbose "cargo run returned non-zero exit code"
+    fi
+
+    # Check for rejection parity: if BOTH tools fail, that's a pass (rejection match)
+    if [[ $hexview_failed -eq 1 && $cargo_failed -eq 1 ]]; then
+        log_ok "Rejection parity: both tools rejected the input ✓"
+        return 0
+    fi
+
+    # If only HexView failed, h3xy should have failed too
+    if [[ $hexview_failed -eq 1 && $cargo_failed -eq 0 ]]; then
+        log_fail "HexView rejected input but h3xy succeeded - missing rejection parity"
         return 2
     fi
 
-    # Compare
+    # If only h3xy failed, it shouldn't have
+    if [[ $hexview_failed -eq 0 && $cargo_failed -eq 1 ]]; then
+        log_fail "h3xy rejected input but HexView succeeded - incorrect rejection"
+        return 2
+    fi
+
+    # Both succeeded - compare outputs
     if compare_outputs; then
         log_ok "Outputs match! ✓"
         [[ $KEEP_FILES -eq 1 ]] && log "Files kept at: $HEXVIEW_OUT, $CARGO_OUT"

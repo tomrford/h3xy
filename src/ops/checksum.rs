@@ -347,24 +347,40 @@ impl HexFile {
         let mut data = Vec::with_capacity(cap);
         let has_forced_range = options.forced_range.is_some();
 
-        for addr in range.start()..=range.end() {
-            if is_excluded(addr, &options.exclude_ranges) {
-                continue;
-            }
-            // Exclude target address range (checksum destination)
-            if let Some(ref target_range) = options.target_exclude {
-                if target_range.contains(addr) {
+        if has_forced_range {
+            // With forced range: iterate all addresses, fill gaps with 0xFF
+            for addr in range.start()..=range.end() {
+                if is_excluded(addr, &options.exclude_ranges) {
                     continue;
                 }
+                if let Some(ref target_range) = options.target_exclude {
+                    if target_range.contains(addr) {
+                        continue;
+                    }
+                }
+                if let Some(byte) = byte_map.get(&addr) {
+                    data.push(*byte);
+                } else {
+                    data.push(0xFF);
+                }
             }
-            if let Some(byte) = byte_map.get(&addr) {
-                data.push(*byte);
-            } else if has_forced_range {
-                // Only fill gaps with 0xFF when a forced range is specified.
-                // Without forced range, HexView checksums only actual data (no gap fill).
-                data.push(0xFF);
+        } else {
+            // Without forced range: only iterate actual data bytes (no gap fill)
+            // Use BTreeMap iteration which is already sorted by address
+            for (&addr, &byte) in &byte_map {
+                if !range.contains(addr) {
+                    continue;
+                }
+                if is_excluded(addr, &options.exclude_ranges) {
+                    continue;
+                }
+                if let Some(ref target_range) = options.target_exclude {
+                    if target_range.contains(addr) {
+                        continue;
+                    }
+                }
+                data.push(byte);
             }
-            // else: skip addresses with no data (no gap filling without forced range)
         }
 
         Ok(data)
