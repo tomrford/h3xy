@@ -89,9 +89,7 @@ fn parse_number(s: &str) -> Result<u32, RangeError> {
         return Err(RangeError::InvalidNumber("empty string".to_string()));
     }
 
-    let s = s
-        .trim_end_matches(|c: char| c == 'u' || c == 'U' || c == 'l' || c == 'L')
-        .trim();
+    let s = s.trim_end_matches(['u', 'U', 'l', 'L']).trim();
     if s.is_empty() {
         return Err(RangeError::InvalidNumber("empty string".to_string()));
     }

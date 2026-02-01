@@ -244,7 +244,7 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
                     }
                 } else {
                     let upper = (addr >> 16) as u16;
-                    let needed_segment = (upper << 12) as u16;
+                    let needed_segment = upper << 12;
                     if needed_extended != needed_segment {
                         current_extended = Some(needed_segment);
                     }

@@ -7,11 +7,11 @@ pub enum CliError {
     #[error(transparent)]
     Arg(#[from] ParseArgError),
     #[error(transparent)]
-    Ops(#[from] h3xy::OpsError),
+    Ops(#[from] crate::OpsError),
     #[error(transparent)]
-    Log(#[from] h3xy::LogError),
+    Log(#[from] crate::LogError),
     #[error(transparent)]
-    Parse(#[from] h3xy::ParseError),
+    Parse(#[from] crate::ParseError),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error("{0}")]

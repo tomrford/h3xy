@@ -62,16 +62,20 @@ impl HexFile {
             return;
         }
 
+        let merged_ranges = merge_ranges(ranges);
         let mut new_segments = Vec::new();
 
         for segment in self.segments() {
+            if segment.is_empty() {
+                continue;
+            }
             let seg_range =
                 match Range::from_start_end(segment.start_address, segment.end_address()) {
                     Ok(r) => r,
                     Err(_) => continue,
                 };
 
-            for range in ranges {
+            for range in &merged_ranges {
                 if let Some(intersection) = seg_range.intersection(range) {
                     let start_offset = (intersection.start() - segment.start_address) as usize;
                     let end_offset = (intersection.end() - segment.start_address) as usize + 1;
@@ -95,6 +99,9 @@ impl HexFile {
             let mut new_segments = Vec::new();
 
             for segment in self.segments_mut().drain(..) {
+                if segment.is_empty() {
+                    continue;
+                }
                 let seg_start = segment.start_address;
                 let seg_end = segment.end_address();
 
@@ -160,6 +167,9 @@ impl HexFile {
         // Collect existing data segments that overlap with the range
         let mut occupied: Vec<(u32, u32)> = Vec::new();
         for segment in self.segments() {
+            if segment.is_empty() {
+                continue;
+            }
             let seg_start = segment.start_address;
             let seg_end = segment.end_address();
 
@@ -177,12 +187,12 @@ impl HexFile {
         // Merge overlapping/adjacent intervals
         let mut merged: Vec<(u32, u32)> = Vec::new();
         for (start, end) in occupied {
-            if let Some(last) = merged.last_mut() {
-                if start <= last.1.saturating_add(1) {
-                    // Overlapping or adjacent - extend
-                    last.1 = last.1.max(end);
-                    continue;
-                }
+            if let Some(last) = merged.last_mut()
+                && start <= last.1.saturating_add(1)
+            {
+                // Overlapping or adjacent - extend
+                last.1 = last.1.max(end);
+                continue;
             }
             merged.push((start, end));
         }
@@ -286,6 +296,9 @@ impl HexFile {
     pub fn offset_addresses(&mut self, offset: i64) -> Result<(), OpsError> {
         // First pass: validate all addresses
         for segment in self.segments() {
+            if segment.is_empty() {
+                continue;
+            }
             let new_addr = (segment.start_address as i64).checked_add(offset);
 
             match new_addr {
@@ -301,11 +314,34 @@ impl HexFile {
 
         // Second pass: apply mutation
         for segment in self.segments_mut() {
+            if segment.is_empty() {
+                continue;
+            }
             segment.start_address = ((segment.start_address as i64) + offset) as u32;
         }
 
         Ok(())
     }
+}
+
+fn merge_ranges(ranges: &[Range]) -> Vec<Range> {
+    let mut sorted = ranges.to_vec();
+    sorted.sort_by_key(|r| r.start());
+
+    let mut merged: Vec<Range> = Vec::new();
+    for range in sorted {
+        if let Some(last) = merged.last_mut()
+            && range.start() <= last.end().saturating_add(1)
+        {
+            let new_end = last.end().max(range.end());
+            if let Ok(merged_range) = Range::from_start_end(last.start(), new_end) {
+                *last = merged_range;
+                continue;
+            }
+        }
+        merged.push(range);
+    }
+    merged
 }
 
 #[cfg(test)]
@@ -521,10 +557,11 @@ mod tests {
             Range::from_start_end(0x1005, 0x1015).unwrap(),
             Range::from_start_end(0x1010, 0x101A).unwrap(), // overlaps
         ]);
-        let norm = hf.normalized_lossy();
-        // Should have data from 0x1005 to 0x101A
+        let norm = hf.normalized().unwrap();
+        // Should have data from 0x1005 to 0x101A (0x16 bytes)
         assert_eq!(norm.min_address(), Some(0x1005));
         assert_eq!(norm.max_address(), Some(0x101A));
+        assert_eq!(norm.total_bytes(), 0x101A - 0x1005 + 1);
     }
 
     #[test]

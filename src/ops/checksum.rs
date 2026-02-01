@@ -239,10 +239,10 @@ impl HexFile {
                 // Overwrite end writes at (max_address - size + 1)
                 if let Some(end) = self.max_address() {
                     let offset = size.saturating_sub(1);
-                    if let Some(write_addr) = end.checked_sub(offset) {
-                        if let Ok(target_range) = Range::from_start_length(write_addr, size) {
-                            effective_options.target_exclude = Some(target_range);
-                        }
+                    if let Some(write_addr) = end.checked_sub(offset)
+                        && let Ok(target_range) = Range::from_start_length(write_addr, size)
+                    {
+                        effective_options.target_exclude = Some(target_range);
                     }
                 }
             }
@@ -353,10 +353,10 @@ impl HexFile {
                 if is_excluded(addr, &options.exclude_ranges) {
                     continue;
                 }
-                if let Some(ref target_range) = options.target_exclude {
-                    if target_range.contains(addr) {
-                        continue;
-                    }
+                if let Some(ref target_range) = options.target_exclude
+                    && target_range.contains(addr)
+                {
+                    continue;
                 }
                 if let Some(byte) = byte_map.get(&addr) {
                     data.push(*byte);
@@ -374,10 +374,10 @@ impl HexFile {
                 if is_excluded(addr, &options.exclude_ranges) {
                     continue;
                 }
-                if let Some(ref target_range) = options.target_exclude {
-                    if target_range.contains(addr) {
-                        continue;
-                    }
+                if let Some(ref target_range) = options.target_exclude
+                    && target_range.contains(addr)
+                {
+                    continue;
                 }
                 data.push(byte);
             }

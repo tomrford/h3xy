@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use h3xy::Range;
+use crate::Range;
 
 use super::parse::parse_option;
 
@@ -224,15 +224,40 @@ impl std::fmt::Display for ParseArgError {
 impl std::error::Error for ParseArgError {}
 
 impl Args {
-    fn is_existing_abs_path(arg: &str) -> bool {
-        let path = std::path::Path::new(arg);
-        arg.starts_with('/') && path.is_absolute() && path.exists()
-    }
     pub fn parse() -> Result<Self, ParseArgError> {
         Self::parse_from(std::env::args().skip(1).collect())
     }
 
     pub fn parse_from(args: Vec<String>) -> Result<Self, ParseArgError> {
+        Self::parse_from_with(args, |arg| {
+            let path = std::path::Path::new(arg);
+            arg.starts_with('/') && path.is_absolute() && path.exists()
+        })
+    }
+
+    pub fn parse_from_str(args: &str) -> Result<Self, ParseArgError> {
+        let split = split_cli_args(args)?;
+        Self::parse_from(split)
+    }
+
+    pub fn parse_from_str_with<F>(
+        args: &str,
+        is_existing_abs_path: F,
+    ) -> Result<Self, ParseArgError>
+    where
+        F: Fn(&str) -> bool,
+    {
+        let split = split_cli_args(args)?;
+        Self::parse_from_with(split, is_existing_abs_path)
+    }
+
+    pub fn parse_from_with<F>(
+        args: Vec<String>,
+        is_existing_abs_path: F,
+    ) -> Result<Self, ParseArgError>
+    where
+        F: Fn(&str) -> bool,
+    {
         let mut result = Args {
             fill_pattern: vec![0xFF],
             fill_pattern_set: false,
@@ -242,6 +267,7 @@ impl Args {
 
         let mut args_iter = args.iter().peekable();
         let mut force_positional = false;
+        let is_existing_abs_path = &is_existing_abs_path;
 
         while let Some(arg) = args_iter.next() {
             if arg == "--" {
@@ -269,7 +295,7 @@ impl Args {
                 match parse_option(&mut result, opt) {
                     Ok(()) => {}
                     Err(ParseArgError::InvalidOption(_)) => {
-                        if result.input_file.is_none() && Self::is_existing_abs_path(arg) {
+                        if result.input_file.is_none() && is_existing_abs_path(arg) {
                             result.input_file = Some(PathBuf::from(arg));
                         } else {
                             return Err(ParseArgError::InvalidOption(arg.clone()));
@@ -286,6 +312,66 @@ impl Args {
 
         Ok(result)
     }
+}
+
+fn split_cli_args(input: &str) -> Result<Vec<String>, ParseArgError> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut quote: Option<char> = None;
+    let mut escape = false;
+
+    for c in input.chars() {
+        if escape {
+            current.push(c);
+            escape = false;
+            continue;
+        }
+
+        if c == '\\' {
+            escape = true;
+            continue;
+        }
+
+        if let Some(q) = quote {
+            if c == q {
+                quote = None;
+            } else {
+                current.push(c);
+            }
+            continue;
+        }
+
+        if c == '"' || c == '\'' {
+            quote = Some(c);
+            continue;
+        }
+
+        if c.is_whitespace() {
+            if !current.is_empty() {
+                args.push(current);
+                current = String::new();
+            }
+            continue;
+        }
+
+        current.push(c);
+    }
+
+    if escape {
+        current.push('\\');
+    }
+
+    if quote.is_some() {
+        return Err(ParseArgError::InvalidOption(
+            "unterminated quote".to_string(),
+        ));
+    }
+
+    if !current.is_empty() {
+        args.push(current);
+    }
+
+    Ok(args)
 }
 
 #[cfg(test)]

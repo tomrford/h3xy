@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use h3xy::Range;
+use crate::Range;
 
 use super::types::{
     ChecksumParams, ChecksumTarget, DspicOp, ForcedRange, ImportParam, MergeParam, ParseArgError,
@@ -22,7 +22,7 @@ pub(super) fn strip_quotes(s: &str) -> &str {
 }
 
 pub(super) fn parse_hexview_ranges(s: &str) -> Result<Vec<Range>, ParseArgError> {
-    h3xy::parse_hexview_ranges(s).map_err(|e| ParseArgError::InvalidRange(e.to_string()))
+    crate::parse_hexview_ranges(s).map_err(|e| ParseArgError::InvalidRange(e.to_string()))
 }
 
 pub(super) fn parse_hex_bytes(s: &str) -> Result<Vec<u8>, ParseArgError> {
@@ -47,9 +47,7 @@ pub(super) fn parse_number(s: &str) -> Result<u32, ParseArgError> {
         return Err(ParseArgError::InvalidNumber("empty".to_string()));
     }
 
-    let s = s
-        .trim_end_matches(|c: char| c == 'u' || c == 'U' || c == 'l' || c == 'L')
-        .trim();
+    let s = s.trim_end_matches(['u', 'U', 'l', 'L']).trim();
     if s.is_empty() {
         return Err(ParseArgError::InvalidNumber("empty".to_string()));
     }

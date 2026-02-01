@@ -167,7 +167,7 @@ impl HexFile {
     /// Copies data to the target address (default: source_start * 2).
     pub fn dspic_expand(&mut self, range: Range, target: Option<u32>) -> Result<(), OpsError> {
         let length = range.length() as usize;
-        if length % 2 != 0 {
+        if !length.is_multiple_of(2) {
             return Err(OpsError::LengthNotMultiple {
                 length,
                 expected: 2,
@@ -203,14 +203,14 @@ impl HexFile {
     /// Copies data to the target address (default: source_start / 2).
     pub fn dspic_shrink(&mut self, range: Range, target: Option<u32>) -> Result<(), OpsError> {
         let length = range.length() as usize;
-        if length % 4 != 0 {
+        if !length.is_multiple_of(4) {
             return Err(OpsError::LengthNotMultiple {
                 length,
                 expected: 4,
                 operation: format!("/CDSPS range {:#X}-{:#X}", range.start(), range.end()),
             });
         }
-        if target.is_none() && range.start() % 2 != 0 {
+        if target.is_none() && !range.start().is_multiple_of(2) {
             return Err(OpsError::AddressNotDivisible {
                 address: range.start(),
                 divisor: 2,
@@ -237,7 +237,7 @@ impl HexFile {
     /// Clear dsPIC ghost bytes: set highest byte in each 4-byte group to 0.
     pub fn dspic_clear_ghost(&mut self, range: Range) -> Result<(), OpsError> {
         let length = range.length() as usize;
-        if length % 4 != 0 {
+        if !length.is_multiple_of(4) {
             return Err(OpsError::LengthNotMultiple {
                 length,
                 expected: 4,

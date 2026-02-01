@@ -31,7 +31,9 @@ mod types;
 
 use std::io::Write;
 use std::process::ExitCode;
+use std::{collections::HashMap, path::Path};
 
+pub use error::{CliError, ExecuteOutput};
 pub use types::Args;
 
 pub fn run() -> ExitCode {
@@ -70,4 +72,15 @@ pub fn run() -> ExitCode {
     }
 
     ExitCode::SUCCESS
+}
+
+pub fn execute_in_memory(
+    args: &str,
+    blocks: &HashMap<String, crate::HexFile>,
+) -> Result<ExecuteOutput, CliError> {
+    let parsed = Args::parse_from_str_with(args, |arg| {
+        let path = Path::new(arg);
+        arg.starts_with('/') && path.is_absolute() && blocks.contains_key(arg)
+    })?;
+    parsed.execute_with_blocks(blocks)
 }

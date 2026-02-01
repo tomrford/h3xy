@@ -59,7 +59,9 @@ fn test_cli_pipeline_parity_basic_chain() {
     pipeline.split = Some(4);
     pipeline.swap_word = true;
 
-    let result = pipeline.execute_without_log(|range| vec![0; range.length() as usize]).unwrap();
+    let result = pipeline
+        .execute_without_log(|range| vec![0; range.length() as usize])
+        .unwrap();
     let lib_bytes = write_intel_hex(&result.hexfile, &IntelHexWriteOptions::default());
 
     assert_eq!(cli_bytes, lib_bytes);
@@ -98,7 +100,9 @@ fn test_cli_pipeline_parity_binary_order() {
         range: None,
     }];
 
-    let result = pipeline.execute_without_log(|range| vec![0; range.length() as usize]).unwrap();
+    let result = pipeline
+        .execute_without_log(|range| vec![0; range.length() as usize])
+        .unwrap();
     let lib_bytes = write_binary(&result.hexfile, &BinaryWriteOptions::default());
 
     assert_eq!(cli_bytes, lib_bytes);
@@ -218,7 +222,9 @@ fn test_cli_pipeline_parity_xsb_split() {
         range: None,
     }];
 
-    let result = pipeline.execute_without_log(|range| vec![0; range.length() as usize]).unwrap();
+    let result = pipeline
+        .execute_without_log(|range| vec![0; range.length() as usize])
+        .unwrap();
     let mut segments = result.hexfile.normalized_lossy().into_segments();
     segments.sort_by_key(|s| s.start_address);
 
@@ -251,8 +257,15 @@ fn test_cli_pipeline_parity_fa_fill_binary() {
     let mut pipeline = Pipeline::default();
     pipeline.hexfile = base_hex;
     pipeline.fill_all = Some(0x00);
-    let result = pipeline.execute_without_log(|range| vec![0; range.length() as usize]).unwrap();
-    let lib_bytes = write_binary(&result.hexfile, &BinaryWriteOptions { fill_gaps: Some(0x00) });
+    let result = pipeline
+        .execute_without_log(|range| vec![0; range.length() as usize])
+        .unwrap();
+    let lib_bytes = write_binary(
+        &result.hexfile,
+        &BinaryWriteOptions {
+            fill_gaps: Some(0x00),
+        },
+    );
 
     assert_eq!(cli_bytes, lib_bytes);
 }

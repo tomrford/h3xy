@@ -1,11 +1,14 @@
-use h3xy::{
+use crate::{
     AlignOptions, ChecksumAlgorithm, Pipeline, PipelineDspic, PipelineError, PipelineMerge, Range,
     RemapOptions,
 };
 
 use super::error::{CliError, ExecuteOutput};
-use super::io::{load_input, write_output_for_args};
+use super::io::{FsProvider, ReadProvider, write_output_for_args};
+use super::io::{load_binary_input, load_hex_ascii_input, load_input, load_intel_hex_16bit_input};
 use super::types::{Args, ChecksumTarget, ParseArgError};
+use std::collections::HashMap;
+use std::path::Path;
 
 impl Args {
     fn wrap_error<T, E: std::fmt::Display>(
@@ -70,29 +73,65 @@ impl Args {
 
     /// Execute the parsed arguments in HexView processing order.
     pub fn execute(&self) -> Result<ExecuteOutput, CliError> {
+        let provider = FsProvider;
+        self.execute_with_provider(&provider)
+    }
+
+    pub(super) fn execute_with_provider<P: ReadProvider>(
+        &self,
+        provider: &P,
+    ) -> Result<ExecuteOutput, CliError> {
         self.validate_supported_features()?;
 
-        let hexfile = self.load_hexfile()?;
-        let pipeline = self.build_pipeline(hexfile)?;
+        let hexfile = self.load_hexfile(provider)?;
+        let pipeline = self.build_pipeline(hexfile, provider)?;
         let result = pipeline
-            .execute(random_fill_bytes, load_input)
+            .execute(random_fill_bytes, |path| load_input(provider, path))
             .map_err(|e| match e {
                 PipelineError::Ops(err) => CliError::Other(err.to_string()),
                 PipelineError::Log(err) => CliError::Other(format!("/L: {err}")),
             })?;
         let mut hexfile = result.hexfile;
         let checksum_bytes = self.apply_checksum(&mut hexfile)?;
-        self.write_outputs(&hexfile)?;
+        self.write_outputs(&hexfile, provider)?;
 
         Ok(ExecuteOutput { checksum_bytes })
     }
 
-    fn build_pipeline(&self, hexfile: h3xy::HexFile) -> Result<Pipeline, CliError> {
+    pub(super) fn execute_with_blocks(
+        &self,
+        blocks: &HashMap<String, crate::HexFile>,
+    ) -> Result<ExecuteOutput, CliError> {
+        self.validate_supported_features()?;
+        self.validate_in_memory_features()?;
+
+        let provider = FsProvider;
+        let hexfile = self.load_hexfile_from_blocks(blocks)?;
+        let pipeline = self.build_pipeline_from_blocks(hexfile, &provider, blocks)?;
+        let result = pipeline
+            .execute(random_fill_bytes, |path| load_block(blocks, path))
+            .map_err(|e| match e {
+                PipelineError::Ops(err) => CliError::Other(err.to_string()),
+                PipelineError::Log(err) => CliError::Other(format!("/L: {err}")),
+            })?;
+        let mut hexfile = result.hexfile;
+        let checksum_bytes = self.apply_checksum(&mut hexfile)?;
+        self.write_outputs(&hexfile, &provider)?;
+
+        Ok(ExecuteOutput { checksum_bytes })
+    }
+
+    fn build_pipeline<P: ReadProvider>(
+        &self,
+        hexfile: crate::HexFile,
+        provider: &P,
+    ) -> Result<Pipeline, CliError> {
         let log_commands = if let Some(ref path) = self.log_file {
-            let content = std::fs::read_to_string(path)
+            let content = provider
+                .read_string(path)
                 .map_err(|e| CliError::Other(format!("/L: {e}")))?;
             Some(
-                h3xy::parse_log_commands(&content)
+                crate::parse_log_commands(&content)
                     .map_err(|e| CliError::Other(format!("/L: {e}")))?,
             )
         } else {
@@ -101,7 +140,7 @@ impl Args {
 
         let mut merge_transparent = Vec::with_capacity(self.merge_transparent.len());
         for merge in &self.merge_transparent {
-            let other = load_input(&merge.file)?;
+            let other = load_input(provider, &merge.file)?;
             merge_transparent.push(PipelineMerge {
                 other,
                 offset: merge.offset.unwrap_or(0),
@@ -110,7 +149,7 @@ impl Args {
         }
         let mut merge_opaque = Vec::with_capacity(self.merge_opaque.len());
         for merge in &self.merge_opaque {
-            let other = load_input(&merge.file)?;
+            let other = load_input(provider, &merge.file)?;
             merge_opaque.push(PipelineMerge {
                 other,
                 offset: merge.offset.unwrap_or(0),
@@ -124,64 +163,163 @@ impl Args {
             align_length: self.align_length,
         });
 
-        let mut pipeline = Pipeline::default();
-        pipeline.hexfile = hexfile;
-        pipeline.fill_ranges = self.fill_ranges.clone();
-        pipeline.fill_pattern = if self.fill_pattern_set {
-            Some(self.fill_pattern.clone())
+        Ok(Pipeline {
+            hexfile,
+            fill_ranges: self.fill_ranges.clone(),
+            fill_pattern: if self.fill_pattern_set {
+                Some(self.fill_pattern.clone())
+            } else {
+                None
+            },
+            cut_ranges: self.cut_ranges.clone(),
+            merge_transparent,
+            merge_opaque,
+            address_ranges: self.address_range.clone(),
+            log_commands,
+            fill_all: if self.fill_all {
+                Some(self.align_fill)
+            } else {
+                None
+            },
+            align,
+            split: self.split_block_size,
+            swap_word: self.swap_word,
+            swap_long: self.swap_long,
+            checksum: None,
+            map_star12: self.s12_map,
+            map_star12x: self.s12x_map,
+            map_star08: self.s08_map,
+            remap: self.remap.as_ref().map(|remap| RemapOptions {
+                start: remap.start,
+                end: remap.end,
+                linear: remap.linear,
+                size: remap.size,
+                inc: remap.inc,
+            }),
+            dspic_expand: self
+                .dspic_expand
+                .iter()
+                .map(|op| PipelineDspic {
+                    range: op.range,
+                    target: op.target,
+                })
+                .collect(),
+            dspic_shrink: self
+                .dspic_shrink
+                .iter()
+                .map(|op| PipelineDspic {
+                    range: op.range,
+                    target: op.target,
+                })
+                .collect(),
+            dspic_clear_ghost: self.dspic_clear_ghost.clone(),
+        })
+    }
+
+    fn build_pipeline_from_blocks<P: ReadProvider>(
+        &self,
+        hexfile: crate::HexFile,
+        provider: &P,
+        blocks: &HashMap<String, crate::HexFile>,
+    ) -> Result<Pipeline, CliError> {
+        let log_commands = if let Some(ref path) = self.log_file {
+            let content = provider
+                .read_string(path)
+                .map_err(|e| CliError::Other(format!("/L: {e}")))?;
+            Some(
+                crate::parse_log_commands(&content)
+                    .map_err(|e| CliError::Other(format!("/L: {e}")))?,
+            )
         } else {
             None
         };
-        pipeline.cut_ranges = self.cut_ranges.clone();
-        pipeline.merge_transparent = merge_transparent;
-        pipeline.merge_opaque = merge_opaque;
-        pipeline.address_ranges = self.address_range.clone();
-        pipeline.log_commands = log_commands;
-        pipeline.fill_all = if self.fill_all { Some(self.align_fill) } else { None };
-        pipeline.align = align;
-        pipeline.split = self.split_block_size;
-        pipeline.swap_word = self.swap_word;
-        pipeline.swap_long = self.swap_long;
-        pipeline.checksum = None;
-        pipeline.map_star12 = self.s12_map;
-        pipeline.map_star12x = self.s12x_map;
-        pipeline.map_star08 = self.s08_map;
-        pipeline.remap = self.remap.as_ref().map(|remap| RemapOptions {
-            start: remap.start,
-            end: remap.end,
-            linear: remap.linear,
-            size: remap.size,
-            inc: remap.inc,
-        });
-        pipeline.dspic_expand = self
-            .dspic_expand
-            .iter()
-            .map(|op| PipelineDspic {
-                range: op.range,
-                target: op.target,
-            })
-            .collect();
-        pipeline.dspic_shrink = self
-            .dspic_shrink
-            .iter()
-            .map(|op| PipelineDspic {
-                range: op.range,
-                target: op.target,
-            })
-            .collect();
-        pipeline.dspic_clear_ghost = self.dspic_clear_ghost.clone();
 
-        Ok(pipeline)
+        let mut merge_transparent = Vec::with_capacity(self.merge_transparent.len());
+        for merge in &self.merge_transparent {
+            let other = load_block(blocks, &merge.file)?;
+            merge_transparent.push(PipelineMerge {
+                other,
+                offset: merge.offset.unwrap_or(0),
+                range: merge.range,
+            });
+        }
+        let mut merge_opaque = Vec::with_capacity(self.merge_opaque.len());
+        for merge in &self.merge_opaque {
+            let other = load_block(blocks, &merge.file)?;
+            merge_opaque.push(PipelineMerge {
+                other,
+                offset: merge.offset.unwrap_or(0),
+                range: merge.range,
+            });
+        }
+
+        let align = self.align_address.map(|alignment| AlignOptions {
+            alignment,
+            fill_byte: self.align_fill,
+            align_length: self.align_length,
+        });
+
+        Ok(Pipeline {
+            hexfile,
+            fill_ranges: self.fill_ranges.clone(),
+            fill_pattern: if self.fill_pattern_set {
+                Some(self.fill_pattern.clone())
+            } else {
+                None
+            },
+            cut_ranges: self.cut_ranges.clone(),
+            merge_transparent,
+            merge_opaque,
+            address_ranges: self.address_range.clone(),
+            log_commands,
+            fill_all: if self.fill_all {
+                Some(self.align_fill)
+            } else {
+                None
+            },
+            align,
+            split: self.split_block_size,
+            swap_word: self.swap_word,
+            swap_long: self.swap_long,
+            checksum: None,
+            map_star12: self.s12_map,
+            map_star12x: self.s12x_map,
+            map_star08: self.s08_map,
+            remap: self.remap.as_ref().map(|remap| RemapOptions {
+                start: remap.start,
+                end: remap.end,
+                linear: remap.linear,
+                size: remap.size,
+                inc: remap.inc,
+            }),
+            dspic_expand: self
+                .dspic_expand
+                .iter()
+                .map(|op| PipelineDspic {
+                    range: op.range,
+                    target: op.target,
+                })
+                .collect(),
+            dspic_shrink: self
+                .dspic_shrink
+                .iter()
+                .map(|op| PipelineDspic {
+                    range: op.range,
+                    target: op.target,
+                })
+                .collect(),
+            dspic_clear_ghost: self.dspic_clear_ghost.clone(),
+        })
     }
 
-    fn load_hexfile(&self) -> Result<h3xy::HexFile, CliError> {
+    fn load_hexfile<P: ReadProvider>(&self, provider: &P) -> Result<crate::HexFile, CliError> {
         if let Some(ref import) = self.import_binary {
-            return super::io::load_binary_input(&import.file, import.offset);
+            return load_binary_input(provider, &import.file, import.offset);
         }
         if let Some(ref import) = self.import_hex_ascii {
-            let ascii = super::io::load_hex_ascii_input(&import.file, import.offset)?;
+            let ascii = load_hex_ascii_input(provider, &import.file, import.offset)?;
             if let Some(ref path) = self.input_file {
-                let mut base = load_input(path)?;
+                let mut base = load_input(provider, path)?;
                 if super::io::hexfiles_overlap(&base, &ascii) {
                     if !self.silent {
                         eprintln!("Warning: /IA overlaps input file; ignoring input file");
@@ -196,18 +334,39 @@ impl Args {
             return Ok(ascii);
         }
         if let Some(ref import) = self.import_i16 {
-            return super::io::load_intel_hex_16bit_input(import);
+            return load_intel_hex_16bit_input(provider, import);
         }
         if let Some(ref path) = self.input_file {
-            return load_input(path);
+            return load_input(provider, path);
         }
         if self.log_file.is_some() {
-            return Ok(h3xy::HexFile::new());
+            return Ok(crate::HexFile::new());
         }
         Err(ParseArgError::MissingInputFile.into())
     }
 
-    fn apply_checksum(&self, hexfile: &mut h3xy::HexFile) -> Result<Option<Vec<u8>>, CliError> {
+    fn load_hexfile_from_blocks(
+        &self,
+        blocks: &HashMap<String, crate::HexFile>,
+    ) -> Result<crate::HexFile, CliError> {
+        if self.import_binary.is_some()
+            || self.import_hex_ascii.is_some()
+            || self.import_i16.is_some()
+        {
+            return Err(CliError::Unsupported(
+                "in-memory mode does not support /IN, /IA, or /II2 (provide blocks instead)".into(),
+            ));
+        }
+        if let Some(ref path) = self.input_file {
+            return load_block(blocks, path);
+        }
+        if self.log_file.is_some() {
+            return Ok(crate::HexFile::new());
+        }
+        Err(ParseArgError::MissingInputFile.into())
+    }
+
+    fn apply_checksum(&self, hexfile: &mut crate::HexFile) -> Result<Option<Vec<u8>>, CliError> {
         let Some(ref cs_params) = self.checksum else {
             return Ok(None);
         };
@@ -222,27 +381,27 @@ impl Args {
         let forced_range = cs_params
             .forced_range
             .as_ref()
-            .map(|forced| h3xy::ForcedRange {
+            .map(|forced| crate::ForcedRange {
                 range: forced.range,
                 pattern: forced.pattern.clone(),
             });
         let lib_target = match &cs_params.target {
-            ChecksumTarget::Address(addr) => h3xy::ChecksumTarget::Address(*addr),
-            ChecksumTarget::Append => h3xy::ChecksumTarget::Append,
+            ChecksumTarget::Address(addr) => crate::ChecksumTarget::Address(*addr),
+            ChecksumTarget::Append => crate::ChecksumTarget::Append,
             ChecksumTarget::Begin => {
                 if let Some(start) = hexfile.min_address() {
-                    h3xy::ChecksumTarget::Address(start)
+                    crate::ChecksumTarget::Address(start)
                 } else {
-                    h3xy::ChecksumTarget::Append
+                    crate::ChecksumTarget::Append
                 }
             }
-            ChecksumTarget::Prepend => h3xy::ChecksumTarget::Prepend,
-            ChecksumTarget::OverwriteEnd => h3xy::ChecksumTarget::OverwriteEnd,
-            ChecksumTarget::File(path) => h3xy::ChecksumTarget::File(path.clone()),
+            ChecksumTarget::Prepend => crate::ChecksumTarget::Prepend,
+            ChecksumTarget::OverwriteEnd => crate::ChecksumTarget::OverwriteEnd,
+            ChecksumTarget::File(path) => crate::ChecksumTarget::File(path.clone()),
         };
         let result = self.wrap_error(
             &opt,
-            h3xy::flag_checksum(
+            crate::flag_checksum(
                 hexfile,
                 algorithm,
                 cs_params.range,
@@ -265,12 +424,52 @@ impl Args {
         Ok(Some(result))
     }
 
-    fn write_outputs(&self, hexfile: &h3xy::HexFile) -> Result<(), CliError> {
-        write_output_for_args(self, hexfile)
+    fn write_outputs<P: ReadProvider>(
+        &self,
+        hexfile: &crate::HexFile,
+        provider: &P,
+    ) -> Result<(), CliError> {
+        write_output_for_args(self, hexfile, provider)
+    }
+
+    fn validate_in_memory_features(&self) -> Result<(), CliError> {
+        if self.import_binary.is_some()
+            || self.import_hex_ascii.is_some()
+            || self.import_i16.is_some()
+        {
+            return Err(CliError::Unsupported(
+                "in-memory mode does not support /IN, /IA, or /II2 (provide blocks instead)".into(),
+            ));
+        }
+        Ok(())
     }
 }
 
 fn random_fill_bytes(range: Range) -> Vec<u8> {
-    let seed = h3xy::random_fill_seed_from_time(range);
-    h3xy::random_fill_bytes(range, seed)
+    let seed = crate::random_fill_seed_from_time(range);
+    crate::random_fill_bytes(range, seed)
+}
+
+fn load_block(
+    blocks: &HashMap<String, crate::HexFile>,
+    path: &Path,
+) -> Result<crate::HexFile, CliError> {
+    let key = path.to_string_lossy().to_string();
+    if let Some(block) = blocks.get(&key) {
+        return Ok(block.clone());
+    }
+
+    if let Some(file_name) = path.file_name().and_then(|s| s.to_str())
+        && let Some(block) = blocks.get(file_name)
+    {
+        return Ok(block.clone());
+    }
+
+    if let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+        && let Some(block) = blocks.get(stem)
+    {
+        return Ok(block.clone());
+    }
+
+    Err(CliError::Other(format!("block not found: {key}")))
 }

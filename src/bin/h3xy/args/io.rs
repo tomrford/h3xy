@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use h3xy::HexFile;
+use crate::HexFile;
 
 use super::error::CliError;
 use super::ini::load_ini;
@@ -8,8 +8,26 @@ use super::parse_util::parse_number;
 use super::types::Args;
 use super::types::OutputFormat;
 
-pub(super) fn load_input(path: &Path) -> Result<HexFile, CliError> {
-    let content = std::fs::read(path)?;
+pub(super) trait ReadProvider {
+    fn read_bytes(&self, path: &Path) -> Result<Vec<u8>, std::io::Error>;
+
+    fn read_string(&self, path: &Path) -> Result<String, std::io::Error> {
+        let bytes = self.read_bytes(path)?;
+        String::from_utf8(bytes)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+    }
+}
+
+pub(super) struct FsProvider;
+
+impl ReadProvider for FsProvider {
+    fn read_bytes(&self, path: &Path) -> Result<Vec<u8>, std::io::Error> {
+        std::fs::read(path)
+    }
+}
+
+pub(super) fn load_input(provider: &impl ReadProvider, path: &Path) -> Result<HexFile, CliError> {
+    let content = provider.read_bytes(path)?;
 
     let mut ascii_only = true;
     let mut first_nonempty_line: Option<Vec<u8>> = None;
@@ -41,36 +59,44 @@ pub(super) fn load_input(path: &Path) -> Result<HexFile, CliError> {
         first_nonempty_line = Some(current_line.clone());
     }
 
-    if ascii_lines_checked == 0 && content.len() > 0 {
+    if ascii_lines_checked == 0 && !content.is_empty() {
         ascii_only = content.is_ascii();
     }
 
     if !ascii_only {
-        return Ok(h3xy::parse_binary(&content, 0)?);
+        return Ok(crate::parse_binary(&content, 0)?);
     }
 
     let first_line = first_nonempty_line.unwrap_or_default();
     if first_line.first() == Some(&b':') {
-        let hexfile = h3xy::parse_intel_hex(&content)?;
+        let hexfile = crate::parse_intel_hex(&content)?;
         Ok(hexfile)
     } else if matches!(first_line.first(), Some(b'S') | Some(b's')) {
-        let hexfile = h3xy::parse_srec(&content)?;
+        let hexfile = crate::parse_srec(&content)?;
         Ok(hexfile)
     } else {
-        let hexfile = h3xy::parse_binary(&content, 0)?;
+        let hexfile = crate::parse_binary(&content, 0)?;
         Ok(hexfile)
     }
 }
 
-pub(super) fn load_binary_input(path: &PathBuf, offset: u32) -> Result<HexFile, CliError> {
-    let content = std::fs::read(path)?;
-    let hexfile = h3xy::parse_binary(&content, offset)?;
+pub(super) fn load_binary_input(
+    provider: &impl ReadProvider,
+    path: &Path,
+    offset: u32,
+) -> Result<HexFile, CliError> {
+    let content = provider.read_bytes(path)?;
+    let hexfile = crate::parse_binary(&content, offset)?;
     Ok(hexfile)
 }
 
-pub(super) fn load_hex_ascii_input(path: &PathBuf, offset: u32) -> Result<HexFile, CliError> {
-    let content = std::fs::read(path)?;
-    let hexfile = h3xy::parse_hex_ascii(&content, offset)?;
+pub(super) fn load_hex_ascii_input(
+    provider: &impl ReadProvider,
+    path: &Path,
+    offset: u32,
+) -> Result<HexFile, CliError> {
+    let content = provider.read_bytes(path)?;
+    let hexfile = crate::parse_hex_ascii(&content, offset)?;
     Ok(hexfile)
 }
 
@@ -98,9 +124,12 @@ pub(super) fn hexfiles_overlap(a: &HexFile, b: &HexFile) -> bool {
     false
 }
 
-pub(super) fn load_intel_hex_16bit_input(path: &PathBuf) -> Result<HexFile, CliError> {
-    let content = std::fs::read(path)?;
-    let hexfile = h3xy::parse_intel_hex_16bit(&content)?;
+pub(super) fn load_intel_hex_16bit_input(
+    provider: &impl ReadProvider,
+    path: &Path,
+) -> Result<HexFile, CliError> {
+    let content = provider.read_bytes(path)?;
+    let hexfile = crate::parse_intel_hex_16bit(&content)?;
     Ok(hexfile)
 }
 
@@ -117,50 +146,50 @@ pub(super) fn write_output(
     match format {
         OutputFormat::IntelHex { record_type } => {
             let mode = match record_type {
-                Some(1) => h3xy::IntelHexMode::ExtendedLinear,
-                Some(2) => h3xy::IntelHexMode::ExtendedSegment,
-                _ => h3xy::IntelHexMode::Auto,
+                Some(1) => crate::IntelHexMode::ExtendedLinear,
+                Some(2) => crate::IntelHexMode::ExtendedSegment,
+                _ => crate::IntelHexMode::Auto,
             };
-            let options = h3xy::IntelHexWriteOptions {
+            let options = crate::IntelHexWriteOptions {
                 bytes_per_line: bytes_per_line.unwrap_or(32),
                 mode,
             };
-            let output = h3xy::write_intel_hex(hexfile, &options);
+            let output = crate::write_intel_hex(hexfile, &options);
             std::fs::write(path, output)?;
         }
         OutputFormat::SRecord { record_type } => {
             let record_type = match record_type {
                 None => None,
-                Some(0) => Some(h3xy::SRecordType::S1),
-                Some(1) => Some(h3xy::SRecordType::S2),
-                Some(2) => Some(h3xy::SRecordType::S3),
+                Some(0) => Some(crate::SRecordType::S1),
+                Some(1) => Some(crate::SRecordType::S2),
+                Some(2) => Some(crate::SRecordType::S3),
                 Some(other) => {
                     return Err(CliError::Other(format!(
                         "unsupported S-Record type {other}"
                     )));
                 }
             };
-            let options = h3xy::SRecordWriteOptions {
+            let options = crate::SRecordWriteOptions {
                 bytes_per_line: bytes_per_line.unwrap_or(16),
                 record_type,
             };
-            let output = h3xy::write_srec(hexfile, &options)?;
+            let output = crate::write_srec(hexfile, &options)?;
             std::fs::write(path, output)?;
         }
         OutputFormat::Binary => {
-            let options = h3xy::BinaryWriteOptions::default();
-            let output = h3xy::write_binary(hexfile, &options);
+            let options = crate::BinaryWriteOptions::default();
+            let output = crate::write_binary(hexfile, &options);
             std::fs::write(path, output)?;
         }
         OutputFormat::HexAscii {
             line_length,
             separator,
         } => {
-            let options = h3xy::HexAsciiWriteOptions {
+            let options = crate::HexAsciiWriteOptions {
                 line_length: line_length.unwrap_or(16) as usize,
                 separator: separator.clone(),
             };
-            let output = h3xy::write_hex_ascii(hexfile, &options);
+            let output = crate::write_hex_ascii(hexfile, &options);
             std::fs::write(path, output)?;
         }
         OutputFormat::SeparateBinary => write_separate_binary(hexfile, path)?,
@@ -185,16 +214,20 @@ pub(super) fn write_output(
     Ok(())
 }
 
-pub(super) fn write_output_for_args(args: &Args, hexfile: &HexFile) -> Result<(), CliError> {
+pub(super) fn write_output_for_args(
+    args: &Args,
+    hexfile: &HexFile,
+    provider: &impl ReadProvider,
+) -> Result<(), CliError> {
     match args.output_format {
         Some(OutputFormat::CCode) => {
             let path = resolve_c_code_output_path(args)?;
-            write_c_code_output(args, hexfile, &path)?;
+            write_c_code_output(args, hexfile, &path, provider)?;
             Ok(())
         }
         Some(OutputFormat::FordIntelHex) => {
             let path = resolve_ford_output_path(args)?;
-            write_ford_ihex_output(args, hexfile, &path)?;
+            write_ford_ihex_output(args, hexfile, &path, provider)?;
             Ok(())
         }
         Some(OutputFormat::Porsche) => {
@@ -215,9 +248,10 @@ pub(super) fn write_c_code_output(
     args: &Args,
     hexfile: &HexFile,
     output_path: &Path,
+    provider: &impl ReadProvider,
 ) -> Result<(), CliError> {
     let ini_path = resolve_ini_path(args)?;
-    let ini = load_ini(&ini_path)?;
+    let ini = load_ini(&ini_path, provider)?;
 
     let prefix = ini
         .get("prefix")
@@ -245,8 +279,8 @@ pub(super) fn write_c_code_output(
         .unwrap_or(0);
 
     let word_type = match word_type {
-        0 => h3xy::CCodeWordType::Intel,
-        1 => h3xy::CCodeWordType::Motorola,
+        0 => crate::CCodeWordType::Intel,
+        1 => crate::CCodeWordType::Motorola,
         other => {
             return Err(CliError::Other(format!("unsupported WordType {other}")));
         }
@@ -258,7 +292,7 @@ pub(super) fn write_c_code_output(
         .unwrap_or(&prefix)
         .to_string();
 
-    let options = h3xy::CCodeWriteOptions {
+    let options = crate::CCodeWriteOptions {
         prefix: prefix.clone(),
         header_name,
         word_size: word_size as u8,
@@ -266,7 +300,7 @@ pub(super) fn write_c_code_output(
         decrypt,
         decrypt_value,
     };
-    let output = h3xy::write_c_code(hexfile, &options)?;
+    let output = crate::write_c_code(hexfile, &options)?;
 
     let (c_path, h_path) = derive_c_code_paths(output_path, &prefix);
     std::fs::write(c_path, output.c)?;
@@ -300,16 +334,17 @@ pub(super) fn write_ford_ihex_output(
     args: &Args,
     hexfile: &HexFile,
     output_path: &Path,
+    provider: &impl ReadProvider,
 ) -> Result<(), CliError> {
     let ini_path = resolve_ini_path(args)?;
-    let ini = load_ini(&ini_path)?;
+    let ini = load_ini(&ini_path, provider)?;
 
     let header = build_ford_header(args, hexfile, output_path, &ini)?;
-    let options = h3xy::IntelHexWriteOptions {
+    let options = crate::IntelHexWriteOptions {
         bytes_per_line: args.bytes_per_line.unwrap_or(32),
-        mode: h3xy::IntelHexMode::Auto,
+        mode: crate::IntelHexMode::Auto,
     };
-    let data = h3xy::write_intel_hex(hexfile, &options);
+    let data = crate::write_intel_hex(hexfile, &options);
 
     let mut output = Vec::new();
     output.extend_from_slice(header.as_bytes());
@@ -565,7 +600,7 @@ fn write_separate_binary(hexfile: &HexFile, path: &Path) -> Result<(), CliError>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use h3xy::Segment;
+    use crate::Segment;
     use std::fs;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -619,8 +654,9 @@ mod tests {
             ..Args::default()
         };
         let hexfile = HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01, 0x02])]);
+        let provider = FsProvider;
 
-        write_ford_ihex_output(&args, &hexfile, &output).unwrap();
+        write_ford_ihex_output(&args, &hexfile, &output, &provider).unwrap();
         let content = fs::read_to_string(&output).unwrap();
         assert!(content.contains("APPLICATION>APP"));
         assert!(content.contains("FILE CHECKSUM>"));
@@ -642,7 +678,8 @@ mod tests {
             ..Args::default()
         };
         let hexfile = HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01])]);
-        let result = write_ford_ihex_output(&args, &hexfile, &output);
+        let provider = FsProvider;
+        let result = write_ford_ihex_output(&args, &hexfile, &output, &provider);
         assert!(result.is_err());
 
         let _ = fs::remove_dir_all(dir);

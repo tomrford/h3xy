@@ -1,3 +1,4 @@
+pub mod cli;
 pub mod error;
 pub mod hexfile;
 pub mod io;

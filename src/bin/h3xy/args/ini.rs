@@ -1,8 +1,13 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-pub(super) fn load_ini(path: &Path) -> Result<HashMap<String, String>, std::io::Error> {
-    let content = std::fs::read_to_string(path)?;
+use super::io::ReadProvider;
+
+pub(super) fn load_ini(
+    path: &Path,
+    provider: &impl ReadProvider,
+) -> Result<HashMap<String, String>, std::io::Error> {
+    let content = provider.read_string(path)?;
     let mut map = HashMap::new();
 
     for line in content.lines() {

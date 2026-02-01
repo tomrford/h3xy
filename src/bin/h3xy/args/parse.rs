@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use h3xy::Range;
+use crate::Range;
 
 use super::parse_util::{
     parse_checksum, parse_dspic_op, parse_hex_ascii_params, parse_hex_bytes, parse_hexview_ranges,
