@@ -80,7 +80,7 @@ pub fn execute_in_memory(
 ) -> Result<ExecuteOutput, CliError> {
     let parsed = Args::parse_from_str_with(args, |arg| {
         let path = Path::new(arg);
-        arg.starts_with('/') && path.is_absolute() && blocks.contains_key(arg)
+        arg.starts_with('/') && path.is_absolute() && (blocks.contains_key(arg) || path.exists())
     })?;
     parsed.execute_with_blocks(blocks)
 }

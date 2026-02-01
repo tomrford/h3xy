@@ -103,10 +103,9 @@ impl Args {
         blocks: &HashMap<String, crate::HexFile>,
     ) -> Result<ExecuteOutput, CliError> {
         self.validate_supported_features()?;
-        self.validate_in_memory_features()?;
 
         let provider = FsProvider;
-        let hexfile = self.load_hexfile_from_blocks(blocks)?;
+        let hexfile = self.load_hexfile_from_blocks(blocks, &provider)?;
         let pipeline = self.build_pipeline_from_blocks(hexfile, &provider, blocks)?;
         let result = pipeline
             .execute(random_fill_bytes, |path| load_block(blocks, path))
@@ -348,14 +347,30 @@ impl Args {
     fn load_hexfile_from_blocks(
         &self,
         blocks: &HashMap<String, crate::HexFile>,
+        provider: &impl ReadProvider,
     ) -> Result<crate::HexFile, CliError> {
-        if self.import_binary.is_some()
-            || self.import_hex_ascii.is_some()
-            || self.import_i16.is_some()
-        {
-            return Err(CliError::Unsupported(
-                "in-memory mode does not support /IN, /IA, or /II2 (provide blocks instead)".into(),
-            ));
+        if let Some(ref import) = self.import_binary {
+            return load_binary_input(provider, &import.file, import.offset);
+        }
+        if let Some(ref import) = self.import_hex_ascii {
+            let ascii = load_hex_ascii_input(provider, &import.file, import.offset)?;
+            if let Some(ref path) = self.input_file {
+                let mut base = load_block(blocks, path)?;
+                if super::io::hexfiles_overlap(&base, &ascii) {
+                    if !self.silent {
+                        eprintln!("Warning: /IA overlaps input file; ignoring input file");
+                    }
+                    return Ok(ascii);
+                }
+                for segment in ascii.segments() {
+                    base.append_segment(segment.clone());
+                }
+                return Ok(base);
+            }
+            return Ok(ascii);
+        }
+        if let Some(ref import) = self.import_i16 {
+            return load_intel_hex_16bit_input(provider, import);
         }
         if let Some(ref path) = self.input_file {
             return load_block(blocks, path);
@@ -431,18 +446,6 @@ impl Args {
     ) -> Result<(), CliError> {
         write_output_for_args(self, hexfile, provider)
     }
-
-    fn validate_in_memory_features(&self) -> Result<(), CliError> {
-        if self.import_binary.is_some()
-            || self.import_hex_ascii.is_some()
-            || self.import_i16.is_some()
-        {
-            return Err(CliError::Unsupported(
-                "in-memory mode does not support /IN, /IA, or /II2 (provide blocks instead)".into(),
-            ));
-        }
-        Ok(())
-    }
 }
 
 fn random_fill_bytes(range: Range) -> Vec<u8> {
@@ -471,5 +474,6 @@ fn load_block(
         return Ok(block.clone());
     }
 
-    Err(CliError::Other(format!("block not found: {key}")))
+    let provider = FsProvider;
+    load_input(&provider, path)
 }
