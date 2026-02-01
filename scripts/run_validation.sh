@@ -4,7 +4,7 @@ set -o pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
-LOG_DIR="$ROOT_DIR/ralph/results"
+LOG_DIR="$ROOT_DIR/validation/logs"
 mkdir -p "$LOG_DIR"
 
 NIX_CMD=${NIX_CMD:-}
