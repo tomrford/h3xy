@@ -2,6 +2,11 @@
 name = "h3xy"
 version = "0.1.0"
 edition = "2024"
+description = "Hex file processing library & CLI (HexView alternative/replacement)."
+license = "MIT"
+repository = "https://github.com/tomrford/h3xy"
+categories = ["command-line-utilities"]
+keywords = ["hex", "intel-hex", "srec", "firmware"]
 
 [dependencies]
 clap = "4.5.53"
