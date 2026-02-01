@@ -25,10 +25,7 @@ fn test_execute_in_memory_merge_opaque_intel_hex() {
     ));
     std::fs::create_dir_all(&dir).unwrap();
     let out_path = dir.join("out.hex");
-    let args = format!(
-        "base.hex /MO:merge.hex /XI -o {}",
-        out_path.to_string_lossy()
-    );
+    let args = format!("base /MO:merge /XI -o {}", out_path.to_string_lossy());
 
     cli::execute_in_memory(&args, &blocks).unwrap();
 

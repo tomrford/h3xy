@@ -462,18 +462,6 @@ fn load_block(
         return Ok(block.clone());
     }
 
-    if let Some(file_name) = path.file_name().and_then(|s| s.to_str())
-        && let Some(block) = blocks.get(file_name)
-    {
-        return Ok(block.clone());
-    }
-
-    if let Some(stem) = path.file_stem().and_then(|s| s.to_str())
-        && let Some(block) = blocks.get(stem)
-    {
-        return Ok(block.clone());
-    }
-
     let provider = FsProvider;
     load_input(&provider, path)
 }
