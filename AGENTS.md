@@ -113,7 +113,7 @@ cargo run -- [args]   # Run CLI
 - Keyed option parsing now split into helpers (import/path/range/merge/numeric/checksum/dspic).
 - /II2 (16-bit Intel HEX import) now supported (address*2).
 - Validation suite requires setup not on this machine.
-- Mint (github.com/fordtom/mint) uses dedicated export crates; consider reuse here to avoid hand-rolled format code.
+- Mint (github.com/tomrford/mint) uses dedicated export crates; consider reuse here to avoid hand-rolled format code.
 - Possible crates to evaluate for reuse: `ihex`, `intelhex`, `srec`, `srec_rs`, `srex` (health check needed; `ihex` appears stale).
 - `/S08MAP` manual only lists example mappings; no formula/constraints given. Treat as ambiguous; defer or choose explicit mapping when needed.
 - `/S08MAP` now implemented (also accepts `/S08`): 0x4000-0x7FFF -> 0x104000; banked 0xXX.8000-0xXX.BFFF -> 0x100000 + bank*0x4000 + offset; other ranges unchanged (verify).

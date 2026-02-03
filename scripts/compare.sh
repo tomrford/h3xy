@@ -97,15 +97,6 @@ resolve_path() {
     fi
 }
 
-resolve_path() {
-    local path="$1"
-    if command -v realpath &>/dev/null; then
-        realpath "$path"
-    else
-        readlink -f "$path" 2>/dev/null || echo "$path"
-    fi
-}
-
 looks_like_range() {
     local value="$1"
     if [[ "$value" != *-* && "$value" != *,* && "$value" != *:* ]]; then
