@@ -64,7 +64,7 @@ fn align_up(len: u32, alignment: u32) -> u32 {
     if rem == 0 {
         len
     } else {
-        len + (alignment - rem)
+        len.checked_add(alignment - rem).unwrap_or(len)
     }
 }
 

@@ -9,6 +9,5 @@ categories = ["command-line-utilities"]
 keywords = ["hex", "intel-hex", "srec", "firmware"]
 
 [dependencies]
-clap = "4.5.53"
 crc = "3.4.0"
 thiserror = "2.0.17"

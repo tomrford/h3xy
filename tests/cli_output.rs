@@ -1,6 +1,8 @@
 mod common;
+mod common_lines;
 
-use common::{assert_success, read_nonempty_lines, run_h3xy, temp_dir, write_file};
+use common::{assert_success, run_h3xy, temp_dir, write_file};
+use common_lines::read_nonempty_lines;
 
 fn parse_hex_pairs(line: &str) -> Vec<u8> {
     let mut out = Vec::new();

@@ -110,7 +110,6 @@ pub struct ImportParam {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct RemapParams {
     pub start: u32,
     pub end: u32,
@@ -146,14 +145,12 @@ pub enum ChecksumTarget {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct DataProcessingParams {
     pub method: u8,
     pub param: String,
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct DspicOp {
     pub range: Range,
     pub target: Option<u32>,
@@ -164,27 +161,22 @@ pub enum OutputFormat {
     IntelHex {
         record_type: Option<u8>,
     }, // /XI[:len[:type]]
-    #[allow(dead_code)]
     SRecord {
         record_type: Option<u8>,
     }, // /XS[:len[:type]]
     Binary, // /XN
-    #[allow(dead_code)]
     HexAscii {
         line_length: Option<u32>,
         separator: Option<String>,
     }, // /XA
     CCode,  // /XC
     FordIntelHex, // /XF
-    #[allow(dead_code)]
     GmHeader {
         addr: Option<u32>,
     }, // /XG
-    #[allow(dead_code)]
     GmHeaderOs {
         addr: Option<u32>,
     }, // /XGC
-    #[allow(dead_code)]
     GmHeaderCal {
         addr: Option<u32>,
     }, // /XGCC

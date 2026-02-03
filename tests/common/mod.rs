@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use h3xy::parse_intel_hex;
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -30,21 +29,4 @@ pub fn assert_success(output: &Output) {
         let stderr = String::from_utf8_lossy(&output.stderr);
         panic!("h3xy failed: {stderr}");
     }
-}
-
-#[allow(dead_code)]
-pub fn run_hex_output(args: Vec<String>, out_path: &Path) -> h3xy::HexFile {
-    let output = run_h3xy(&args);
-    assert_success(&output);
-    let data = std::fs::read(out_path).unwrap();
-    parse_intel_hex(&data).unwrap()
-}
-
-#[allow(dead_code)]
-pub fn read_nonempty_lines(path: &Path) -> Vec<String> {
-    let text = std::fs::read_to_string(path).unwrap();
-    text.lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
-        .collect()
 }

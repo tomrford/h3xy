@@ -15,7 +15,7 @@ cargo run -- [args]   # Run CLI
 ## Structure
 
 - `src/lib.rs` - Module declarations + public re-exports
-- `src/bin/h3xy.rs` - CLI entry point
+- `src/bin/h3xy/main.rs` - CLI entry point
 - `src/` - Core library modules
 
 ## Conventions (from mint/tracy)
@@ -177,48 +177,7 @@ When running in WSL against Windows HexView.exe:
 - Paths are auto-converted via `wslpath` when available
 - Symlinks expected: `./reference/` → HexView location, `./scratchpad/` → Windows work area
 
-## Validation Framework
+## Validation Framework (local-only)
 
-Full automated validation suite in `validation/`:
-
-```bash
-cd validation
-
-# Full run (generates inputs + tests, runs comparisons)
-uv run python main.py
-
-# Quick smoke test
-uv run python main.py --random-inputs 2 --fuzz-per-file 2 --stop-on-fail
-
-# Reproducible with seed
-uv run python main.py --seed 12345
-
-# Doom loop style: run until N failures, fix, repeat
-uv run python main.py --seed 42 --max-failures 5
-```
-
-### What it tests
-
-- **Input files**: Standard shapes, edge cases, merge pairs, random files
-- **Operations**: /AR, /CR, /FR+FP, /FA, /AD, /AL, /SB, /SWAPWORD, /SWAPLONG, /CS0, /CS1, /MO, /MT
-- **Combinations**: Multi-operation sequences, fuzz tests
-
-### Output
-
-- Console: progress dots, summary, first 20 failures
-- `failures.json`: Full failure details for automated processing
-
-### Architecture
-
-```
-validation/
-├── main.py                    # Entry point
-├── src/h3xy_validation/
-│   ├── intel_hex.py          # Intel HEX format generation
-│   ├── hexgen.py             # Input file generator
-│   ├── testgen.py            # Test case generator
-│   └── runner.py             # Orchestration
-├── inputs/                    # Generated .hex inputs
-├── outputs/                   # Test outputs
-└── failures.json             # Last run failures
-```
+Validation tooling lives outside git and is ignored (`validation/`). If you keep a local copy,
+run it via `scripts/validation_suite.sh`.

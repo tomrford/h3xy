@@ -1,6 +1,8 @@
 mod common;
+mod common_hex;
 
-use common::{assert_success, run_h3xy, run_hex_output, temp_dir, write_file};
+use common::{assert_success, run_h3xy, temp_dir, write_file};
+use common_hex::run_hex_output;
 use h3xy::{HexFile, IntelHexMode, IntelHexWriteOptions, Segment, write_intel_hex};
 
 #[test]

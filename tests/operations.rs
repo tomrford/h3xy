@@ -313,8 +313,7 @@ fn test_operations_on_empty_file() {
 
 #[test]
 fn test_normalized_strict_vs_lossy() {
-    #[allow(unused_mut)]
-    let mut hf = HexFile::with_segments(vec![
+    let hf = HexFile::with_segments(vec![
         Segment::new(0x1000, vec![0xAA; 8]),
         Segment::new(0x1004, vec![0xBB; 4]), // overlaps
     ]);
@@ -336,7 +335,6 @@ fn test_normalized_strict_vs_lossy() {
 
 #[test]
 fn test_three_overlapping_segments_last_wins() {
-    #[allow(unused_mut)]
     let hf = HexFile::with_segments(vec![
         Segment::new(0x1000, vec![0x11, 0x11, 0x11, 0x11]),
         Segment::new(0x1001, vec![0x22, 0x22]),

@@ -274,14 +274,17 @@ fn truncate_segment_to_u32(segment: &Segment) -> Option<Segment> {
     if segment.is_empty() {
         return None;
     }
-    let max_len = (u32::MAX - segment.start_address) as usize + 1;
-    if max_len == 0 {
+    let max_len_u64 = (u32::MAX as u64)
+        .saturating_sub(segment.start_address as u64)
+        .saturating_add(1);
+    let data_len_u64 = segment.data.len() as u64;
+    let len_u64 = data_len_u64
+        .min(max_len_u64)
+        .min(usize::MAX as u64);
+    if len_u64 == 0 {
         return None;
     }
-    let len = segment.data.len().min(max_len);
-    if len == 0 {
-        return None;
-    }
+    let len = len_u64 as usize;
     if len == segment.data.len() {
         return Some(segment.clone());
     }
