@@ -1,4 +1,4 @@
-use super::{ParseError, normalized_sorted_segments};
+use super::{ParseError, normalized_sorted_segments, push_crlf, push_hex_byte};
 use crate::{HexFile, Segment};
 
 const RECORD_DATA: u8 = 0x00;
@@ -225,7 +225,7 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
     } else {
         segments
             .iter()
-            .map(|s| (s.len() + bytes_per_line - 1) / bytes_per_line)
+            .map(|s| s.len().div_ceil(bytes_per_line))
             .sum()
     };
     // Rough reserve: 2 hex chars per byte + per-record overhead.
@@ -239,9 +239,7 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
         while data_offset < segment.len() {
             let line_mode = if let Some(mode) = fixed_mode {
                 mode
-            } else if auto_force_linear {
-                IntelHexMode::ExtendedLinear
-            } else if addr > 0xFFFFF {
+            } else if auto_force_linear || addr > 0xFFFFF {
                 IntelHexMode::ExtendedLinear
             } else {
                 IntelHexMode::ExtendedSegment
@@ -293,7 +291,7 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
 
             let remaining_in_bank = 0x10000u32.saturating_sub(offset_addr as u32) as usize;
             let remaining_data = segment.len() - data_offset;
-            let offset_from_start = addr.checked_sub(seg_start).unwrap_or(0);
+            let offset_from_start = addr.saturating_sub(seg_start);
             let line_offset = (offset_from_start % bytes_per_line as u32) as usize;
             let line_remaining = bytes_per_line - line_offset;
             let chunk_len = line_remaining.min(remaining_in_bank).min(remaining_data);
@@ -307,9 +305,7 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
     }
 
     write_record(&mut output, RECORD_EOF, 0, &[]);
-    // TEMP: HexView (Windows) emits CRLF; force CRLF for validation parity.
-    // Remove once the validation suite normalizes line endings.
-    normalize_crlf(output)
+    output
 }
 
 fn write_record(output: &mut Vec<u8>, record_type: u8, address: u16, data: &[u8]) {
@@ -327,34 +323,15 @@ fn write_record(output: &mut Vec<u8>, record_type: u8, address: u16, data: &[u8]
     checksum = (!checksum).wrapping_add(1);
 
     output.push(b':');
-    write_hex_byte(output, byte_count);
-    write_hex_byte(output, addr_bytes[0]);
-    write_hex_byte(output, addr_bytes[1]);
-    write_hex_byte(output, record_type);
+    push_hex_byte(output, byte_count);
+    push_hex_byte(output, addr_bytes[0]);
+    push_hex_byte(output, addr_bytes[1]);
+    push_hex_byte(output, record_type);
     for &b in data {
-        write_hex_byte(output, b);
+        push_hex_byte(output, b);
     }
-    write_hex_byte(output, checksum);
-    output.push(b'\n');
-}
-
-fn write_hex_byte(output: &mut Vec<u8>, byte: u8) {
-    const HEX_CHARS: &[u8; 16] = b"0123456789ABCDEF";
-    output.push(HEX_CHARS[(byte >> 4) as usize]);
-    output.push(HEX_CHARS[(byte & 0x0F) as usize]);
-}
-
-fn normalize_crlf(data: Vec<u8>) -> Vec<u8> {
-    let mut out = Vec::with_capacity(data.len());
-    let mut prev = 0u8;
-    for b in data {
-        if b == b'\n' && prev != b'\r' {
-            out.push(b'\r');
-        }
-        out.push(b);
-        prev = b;
-    }
-    out
+    push_hex_byte(output, checksum);
+    push_crlf(output);
 }
 
 fn parse_hex_bytes(hex_str: &str, line_num: usize) -> Result<Vec<u8>, ParseError> {

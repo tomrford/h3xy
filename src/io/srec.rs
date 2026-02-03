@@ -1,4 +1,4 @@
-use crate::io::{ParseError, normalized_sorted_segments};
+use crate::io::{ParseError, normalized_sorted_segments, push_crlf, push_hex_byte};
 use crate::{HexFile, Segment};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -208,9 +208,7 @@ pub fn write_srec(hexfile: &HexFile, options: &SRecordWriteOptions) -> Result<Ve
     let checksum = expected_checksum(&term);
     push_record_line(&mut out, term_digit, &term, checksum);
 
-    // TEMP: HexView (Windows) emits CRLF; force CRLF for validation parity.
-    // Remove once the validation suite normalizes line endings.
-    Ok(normalize_crlf(out))
+    Ok(out)
 }
 
 fn parse_hex_bytes(data: &[u8], line: usize) -> Result<Vec<u8>, ParseError> {
@@ -265,26 +263,11 @@ fn max_address_for(record_type: SRecordType) -> u32 {
 fn push_record_line(out: &mut Vec<u8>, record_digit: char, data: &[u8], checksum: u8) {
     out.push(b'S');
     out.push(record_digit as u8);
-    for byte in data {
-        let hex = format!("{:02X}", byte);
-        out.extend_from_slice(hex.as_bytes());
+    for &byte in data {
+        push_hex_byte(out, byte);
     }
-    let hex = format!("{:02X}", checksum);
-    out.extend_from_slice(hex.as_bytes());
-    out.push(b'\n');
-}
-
-fn normalize_crlf(data: Vec<u8>) -> Vec<u8> {
-    let mut out = Vec::with_capacity(data.len());
-    let mut prev = 0u8;
-    for b in data {
-        if b == b'\n' && prev != b'\r' {
-            out.push(b'\r');
-        }
-        out.push(b);
-        prev = b;
-    }
-    out
+    push_hex_byte(out, checksum);
+    push_crlf(out);
 }
 
 #[cfg(test)]

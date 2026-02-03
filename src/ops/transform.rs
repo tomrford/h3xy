@@ -147,7 +147,7 @@ impl HexFile {
         match mode {
             SwapMode::Word => {
                 let total_len: usize = self.segments().iter().map(|s| s.len()).sum();
-                if total_len % 2 != 0 {
+                if !total_len.is_multiple_of(2) {
                     return Ok(());
                 }
                 if self.segments().iter().any(|s| s.start_address % 2 != 0) {
@@ -263,14 +263,14 @@ impl HexFile {
 
                     let mut swapped = word;
                     swapped.reverse();
-                    for i in 0..4 {
+                    for (i, &byte) in swapped.iter().enumerate() {
                         let Some(a) = addr.checked_add(i as u32) else {
                             return Err(OpsError::AddressOverflow(
                                 "swaplong address overflow".into(),
                             ));
                         };
                         if data_map.contains_key(&a) {
-                            updates.insert(a, swapped[i]);
+                            updates.insert(a, byte);
                         }
                     }
 

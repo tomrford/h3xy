@@ -3,6 +3,7 @@
 import argparse
 import os
 import json
+import re
 import subprocess
 import sys
 import time
@@ -13,6 +14,21 @@ from typing import TextIO
 
 from .hexgen import HexGenerator, GeneratorConfig
 from .testgen import TestCaseGenerator, TestGeneratorConfig, TestCase
+
+TIMING_RE = re.compile(
+    r"^TIMING\s+hexview_ms=(\d+)\s+h3xy_ms=(\d+)\s+delta_ms=(-?\d+)"
+)
+
+
+def parse_timing(output: str) -> tuple[float | None, float | None, float | None]:
+    for line in output.splitlines():
+        match = TIMING_RE.match(line.strip())
+        if match:
+            hexview_ms = float(match.group(1))
+            h3xy_ms = float(match.group(2))
+            delta_ms = float(match.group(3))
+            return hexview_ms, h3xy_ms, delta_ms
+    return None, None, None
 
 
 @dataclass
@@ -56,6 +72,9 @@ class TestResult:
     stdout: str = ""
     stderr: str = ""
     error: str | None = None
+    hexview_ms: float | None = None
+    h3xy_ms: float | None = None
+    delta_ms: float | None = None
 
 
 @dataclass
@@ -70,6 +89,17 @@ class RunResult:
     skipped: int
     duration_seconds: float
     failures: list[TestResult] = field(default_factory=list)
+    perf_samples: list["PerfSample"] = field(default_factory=list)
+
+
+@dataclass
+class PerfSample:
+    name: str
+    input_file: str
+    args: list[str]
+    hexview_ms: float
+    h3xy_ms: float
+    delta_ms: float
 
 
 class ValidationRunner:
@@ -229,6 +259,9 @@ class ValidationRunner:
                 cwd=str(self._abs_path(self.config.project_root)),
             )
             duration_ms = (time.perf_counter() - start) * 1000
+            hexview_ms, h3xy_ms, delta_ms = parse_timing(result.stdout)
+            if hexview_ms is None or h3xy_ms is None:
+                hexview_ms, h3xy_ms, delta_ms = parse_timing(result.stderr)
 
             return TestResult(
                 test=test,
@@ -237,6 +270,9 @@ class ValidationRunner:
                 exit_code=result.returncode,
                 stdout=result.stdout,
                 stderr=result.stderr,
+                hexview_ms=hexview_ms,
+                h3xy_ms=h3xy_ms,
+                delta_ms=delta_ms,
             )
 
         except subprocess.TimeoutExpired:
@@ -272,6 +308,7 @@ class ValidationRunner:
         failed = 0
         skipped = 0
         failures: list[TestResult] = []
+        perf_samples: list[PerfSample] = []
 
         for i, test in enumerate(tests, 1):
             # Progress indicator
@@ -285,6 +322,23 @@ class ValidationRunner:
                 failed += 1
                 status_char = "F"
                 failures.append(result)
+
+            if result.hexview_ms is not None and result.h3xy_ms is not None:
+                delta_ms = (
+                    result.delta_ms
+                    if result.delta_ms is not None
+                    else result.h3xy_ms - result.hexview_ms
+                )
+                perf_samples.append(
+                    PerfSample(
+                        name=result.test.name,
+                        input_file=result.test.input_file,
+                        args=result.test.args,
+                        hexview_ms=result.hexview_ms,
+                        h3xy_ms=result.h3xy_ms,
+                        delta_ms=delta_ms,
+                    )
+                )
 
             # Print progress
             sys.stdout.write(status_char)
@@ -316,6 +370,7 @@ class ValidationRunner:
             skipped=skipped,
             duration_seconds=duration,
             failures=failures,
+            perf_samples=perf_samples,
         )
 
     # ─────────────────────────────────────────────────────────────────────
@@ -354,6 +409,37 @@ class ValidationRunner:
             if len(result.failures) > 20:
                 print(f"  ... and {len(result.failures) - 20} more failures\n")
 
+        if result.perf_samples:
+            print(f"{'─'*60}")
+            print("PERF DELTAS (h3xy - HexView, ms)")
+            print(f"{'─'*60}\n")
+            slower = sorted(
+                (s for s in result.perf_samples if s.delta_ms > 0),
+                key=lambda s: s.delta_ms,
+                reverse=True,
+            )[:10]
+            faster = sorted(
+                (s for s in result.perf_samples if s.delta_ms < 0),
+                key=lambda s: s.delta_ms,
+            )[:10]
+
+            if slower:
+                print("  Top slower:")
+                for s in slower:
+                    print(
+                        f"    +{s.delta_ms:.1f} ({s.h3xy_ms:.1f} vs {s.hexview_ms:.1f}) "
+                        f"{s.name} :: {' '.join(s.args)}"
+                    )
+                print()
+            if faster:
+                print("  Top faster:")
+                for s in faster:
+                    print(
+                        f"    {s.delta_ms:.1f} ({s.h3xy_ms:.1f} vs {s.hexview_ms:.1f}) "
+                        f"{s.name} :: {' '.join(s.args)}"
+                    )
+                print()
+
         print(f"{'='*60}\n")
 
     def write_failures_json(self, result: RunResult, path: Path) -> None:
@@ -376,6 +462,9 @@ class ValidationRunner:
                     "exit_code": f.exit_code,
                     "error": f.error,
                     "duration_ms": f.duration_ms,
+                    "hexview_ms": f.hexview_ms,
+                    "h3xy_ms": f.h3xy_ms,
+                    "delta_ms": f.delta_ms,
                 }
                 for f in result.failures
             ],

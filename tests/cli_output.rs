@@ -428,7 +428,7 @@ fn test_cli_binary_and_separate_binary() {
 }
 
 #[test]
-fn test_cli_binary_order_of_appearance() {
+fn test_cli_binary_address_order() {
     let dir = temp_dir("cli_xn_order");
     let base = dir.join("base.bin");
     let merge = dir.join("merge.bin");
@@ -446,7 +446,7 @@ fn test_cli_binary_order_of_appearance() {
     let output = run_h3xy(&args);
     assert_success(&output);
     let data = std::fs::read(&out).unwrap();
-    assert_eq!(data, vec![0x01, 0x02]);
+    assert_eq!(data, vec![0x02, 0x01]);
 }
 
 #[test]

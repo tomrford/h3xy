@@ -65,6 +65,14 @@ log_error() { echo -e "${RED}[error]${NC} $*" >&2; }
 log_ok() { echo -e "${GREEN}[OK]${NC} $*"; }
 log_fail() { echo -e "${RED}[FAIL]${NC} $*"; }
 
+now_ms() {
+    if date +%s%3N >/dev/null 2>&1; then
+        date +%s%3N
+    else
+        echo $(( $(date +%s) * 1000 ))
+    fi
+}
+
 usage() {
     sed -n '3,/^$/p' "$0" | sed 's/^# //' | sed 's/^#//'
     exit "${1:-0}"
@@ -347,6 +355,7 @@ replace_output_in_args() {
 
 run_hexview() {
     log "Running HexView.exe..."
+    HEXVIEW_TIME_MS=0
 
     if [[ ! -x "$HEXVIEW_EXE" && ! -f "$HEXVIEW_EXE" ]]; then
         log_error "HexView.exe not found at: $HEXVIEW_EXE"
@@ -413,11 +422,19 @@ run_hexview() {
 
     log_verbose "HexView args: ${hexview_args[*]}"
 
+    local start_ms end_ms status
+    start_ms=$(now_ms)
+    set +e
     if [[ $VERBOSE -eq 1 ]]; then
         "$HEXVIEW_EXE" "${hexview_args[@]}"
     else
         "$HEXVIEW_EXE" "${hexview_args[@]}" >/dev/null 2>&1
     fi
+    status=$?
+    set -e
+    end_ms=$(now_ms)
+    HEXVIEW_TIME_MS=$((end_ms - start_ms))
+    return $status
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -426,6 +443,7 @@ run_hexview() {
 
 run_cargo() {
     log "Running cargo run (h3xy)..."
+    CARGO_TIME_MS=0
 
     local cargo_args
     mapfile -t cargo_args < <(replace_output_in_args "$CARGO_OUT" "${HEXVIEW_ARGS[@]}")
@@ -434,11 +452,19 @@ run_cargo() {
 
     cd "$PROJECT_ROOT"
 
+    local start_ms end_ms status
+    start_ms=$(now_ms)
+    set +e
     if [[ $VERBOSE -eq 1 ]]; then
         cargo run --quiet --release -- "${cargo_args[@]}"
     else
         cargo run --quiet --release -- "${cargo_args[@]}" 2>&1
     fi
+    status=$?
+    set -e
+    end_ms=$(now_ms)
+    CARGO_TIME_MS=$((end_ms - start_ms))
+    return $status
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -515,6 +541,8 @@ main() {
         cargo_failed=1
         log_verbose "cargo run returned non-zero exit code"
     fi
+    local delta_ms=$((CARGO_TIME_MS - HEXVIEW_TIME_MS))
+    echo "TIMING hexview_ms=$HEXVIEW_TIME_MS h3xy_ms=$CARGO_TIME_MS delta_ms=$delta_ms"
 
     # Check for rejection parity: if BOTH tools fail, that's a pass (rejection match)
     if [[ $hexview_failed -eq 1 && $cargo_failed -eq 1 ]]; then

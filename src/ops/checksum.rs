@@ -16,7 +16,6 @@
 //! - 17: CRC-16 CCITT LE init 0
 //! - 18: CRC-16 CCITT BE init 0
 
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::{HexFile, OpsError, Range, Segment};
@@ -330,7 +329,50 @@ impl HexFile {
             return Ok(Vec::new());
         };
 
-        let cap = usize::try_from(range.length()).map_err(|_| {
+        let mut excludes = options.exclude_ranges.clone();
+        if let Some(target) = options.target_exclude {
+            excludes.push(target);
+        }
+        let excludes = merge_ranges(excludes);
+        let include_ranges = subtract_ranges(range, &excludes);
+        if include_ranges.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut cap_u64: u64 = 0;
+        let segments = working.segments();
+        let has_forced_range = options.forced_range.is_some();
+
+        if has_forced_range {
+            for r in &include_ranges {
+                cap_u64 = cap_u64.saturating_add(r.length() as u64);
+            }
+        } else {
+            let mut seg_idx = 0usize;
+            let mut inc_idx = 0usize;
+            while seg_idx < segments.len() && inc_idx < include_ranges.len() {
+                let seg = &segments[seg_idx];
+                let inc = include_ranges[inc_idx];
+                if seg.end_address() < inc.start() {
+                    seg_idx += 1;
+                    continue;
+                }
+                if seg.start_address > inc.end() {
+                    inc_idx += 1;
+                    continue;
+                }
+                let start = seg.start_address.max(inc.start());
+                let end = seg.end_address().min(inc.end());
+                cap_u64 = cap_u64.saturating_add((end - start + 1) as u64);
+                if seg.end_address() <= inc.end() {
+                    seg_idx += 1;
+                } else {
+                    inc_idx += 1;
+                }
+            }
+        }
+
+        let cap = usize::try_from(cap_u64).map_err(|_| {
             OpsError::AddressOverflow(format!(
                 "checksum range length exceeds usize (start={:#X}, end={:#X})",
                 range.start(),
@@ -338,36 +380,19 @@ impl HexFile {
             ))
         })?;
 
-        let mut byte_map = BTreeMap::new();
-        for segment in working.segments() {
-            for (offset, &byte) in segment.data.iter().enumerate() {
-                let Some(addr) = segment.start_address.checked_add(offset as u32) else {
-                    return Err(OpsError::AddressOverflow(format!(
-                        "checksum address overflow (start={:#X}, offset={})",
-                        segment.start_address, offset
-                    )));
-                };
-                byte_map.insert(addr, byte);
-            }
-        }
-
         let mut data = Vec::with_capacity(cap);
-        let has_forced_range = options.forced_range.is_some();
-        let mut run_start: Option<u32> = None;
-        let mut run_len: usize = 0;
-        let mut prev_addr: Option<u32> = None;
 
         let finalize_run = |run_start: u32, run_len: usize| -> Result<(), OpsError> {
             if !needs_word_alignment {
                 return Ok(());
             }
-            if run_start % 2 != 0 {
+            if !run_start.is_multiple_of(2) {
                 return Err(OpsError::AddressNotDivisible {
                     address: run_start,
                     divisor: 2,
                 });
             }
-            if run_len % 2 != 0 {
+            if !run_len.is_multiple_of(2) {
                 return Err(OpsError::LengthNotMultiple {
                     length: run_len,
                     expected: 2,
@@ -378,80 +403,107 @@ impl HexFile {
         };
 
         if has_forced_range {
-            // With forced range: iterate all addresses, fill gaps with 0xFF
-            for addr in range.start()..=range.end() {
-                if is_excluded(addr, &options.exclude_ranges) {
-                    if let Some(start) = run_start.take() {
-                        finalize_run(start, run_len)?;
-                        run_len = 0;
-                        prev_addr = None;
-                    }
-                    continue;
-                }
-                if let Some(ref target_range) = options.target_exclude
-                    && target_range.contains(addr)
-                {
-                    if let Some(start) = run_start.take() {
-                        finalize_run(start, run_len)?;
-                        run_len = 0;
-                        prev_addr = None;
-                    }
-                    continue;
-                }
-                if let Some(prev) = prev_addr {
-                    if addr != prev.saturating_add(1) {
-                        if let Some(start) = run_start.take() {
-                            finalize_run(start, run_len)?;
-                            run_len = 0;
-                        }
-                    }
-                }
-                if run_start.is_none() {
-                    run_start = Some(addr);
-                }
-                run_len += 1;
-                prev_addr = Some(addr);
+            for r in &include_ranges {
+                let run_len = usize::try_from(r.length()).map_err(|_| {
+                    OpsError::AddressOverflow(format!(
+                        "checksum range length exceeds usize (start={:#X}, end={:#X})",
+                        r.start(),
+                        r.end()
+                    ))
+                })?;
+                finalize_run(r.start(), run_len)?;
+            }
 
-                if let Some(byte) = byte_map.get(&addr) {
-                    data.push(*byte);
-                } else {
-                    data.push(0xFF);
+            let mut seg_idx = 0usize;
+            for r in include_ranges {
+                let mut addr = r.start();
+                while seg_idx < segments.len() && segments[seg_idx].end_address() < addr {
+                    seg_idx += 1;
+                }
+                while addr <= r.end() {
+                    let Some(seg) = segments.get(seg_idx) else {
+                        let len = (r.end() - addr + 1) as usize;
+                        data.resize(data.len() + len, 0xFF);
+                        break;
+                    };
+                    if seg.start_address > r.end() {
+                        let len = (r.end() - addr + 1) as usize;
+                        data.resize(data.len() + len, 0xFF);
+                        break;
+                    }
+                    if seg.start_address > addr {
+                        let gap_end = seg.start_address.saturating_sub(1).min(r.end());
+                        let len = (gap_end - addr + 1) as usize;
+                        data.resize(data.len() + len, 0xFF);
+                        addr = gap_end.saturating_add(1);
+                        continue;
+                    }
+
+                    let seg_start = addr.max(seg.start_address);
+                    let seg_end = seg.end_address().min(r.end());
+                    let offset = (seg_start - seg.start_address) as usize;
+                    let len = (seg_end - seg_start + 1) as usize;
+                    data.extend_from_slice(&seg.data[offset..offset + len]);
+
+                    if seg.end_address() <= seg_end {
+                        seg_idx += 1;
+                    }
+                    if let Some(next_addr) = seg_end.checked_add(1) {
+                        addr = next_addr;
+                    } else {
+                        break;
+                    }
                 }
             }
         } else {
-            // Without forced range: only iterate actual data bytes (no gap fill)
-            // Use BTreeMap iteration which is already sorted by address
-            for (&addr, &byte) in &byte_map {
-                if !range.contains(addr) {
+            let mut run_start: Option<u32> = None;
+            let mut run_len: usize = 0;
+            let mut prev_end: Option<u32> = None;
+            let mut seg_idx = 0usize;
+            let mut inc_idx = 0usize;
+
+            while seg_idx < segments.len() && inc_idx < include_ranges.len() {
+                let seg = &segments[seg_idx];
+                let inc = include_ranges[inc_idx];
+                if seg.end_address() < inc.start() {
+                    seg_idx += 1;
                     continue;
                 }
-                if is_excluded(addr, &options.exclude_ranges) {
+                if seg.start_address > inc.end() {
+                    inc_idx += 1;
                     continue;
                 }
-                if let Some(ref target_range) = options.target_exclude
-                    && target_range.contains(addr)
+                let start = seg.start_address.max(inc.start());
+                let end = seg.end_address().min(inc.end());
+
+                if let Some(prev) = prev_end
+                    && start != prev.saturating_add(1)
                 {
-                    continue;
-                }
-                if let Some(prev) = prev_addr {
-                    if addr != prev.saturating_add(1) {
-                        if let Some(start) = run_start.take() {
-                            finalize_run(start, run_len)?;
-                            run_len = 0;
-                        }
+                    if let Some(start_addr) = run_start.take() {
+                        finalize_run(start_addr, run_len)?;
                     }
+                    run_len = 0;
                 }
                 if run_start.is_none() {
-                    run_start = Some(addr);
+                    run_start = Some(start);
                 }
-                run_len += 1;
-                prev_addr = Some(addr);
-                data.push(byte);
-            }
-        }
 
-        if let Some(start) = run_start {
-            finalize_run(start, run_len)?;
+                let offset = (start - seg.start_address) as usize;
+                let len = (end - start + 1) as usize;
+                data.extend_from_slice(&seg.data[offset..offset + len]);
+                run_len += len;
+                prev_end = Some(end);
+
+                if seg.end_address() <= inc.end() {
+                    seg_idx += 1;
+                } else {
+                    inc_idx += 1;
+                }
+            }
+
+            if let Some(start_addr) = run_start {
+                finalize_run(start_addr, run_len)?;
+            }
         }
 
         Ok(data)
@@ -477,8 +529,61 @@ fn build_pattern_data(range: Range, pattern: &[u8]) -> Result<Vec<u8>, OpsError>
     Ok(data)
 }
 
-fn is_excluded(addr: u32, ranges: &[Range]) -> bool {
-    ranges.iter().any(|r| r.contains(addr))
+fn merge_ranges(mut ranges: Vec<Range>) -> Vec<Range> {
+    ranges.sort_by_key(|r| r.start());
+    let mut merged: Vec<Range> = Vec::new();
+    for r in ranges {
+        if let Some(last) = merged.last_mut() {
+            let last_end = last.end();
+            let extend = last_end
+                .checked_add(1)
+                .map(|v| r.start() <= v)
+                .unwrap_or(false);
+            if r.start() <= last_end || extend {
+                let end = last_end.max(r.end());
+                *last = Range::from_start_end(last.start(), end).expect("range merge");
+                continue;
+            }
+        }
+        merged.push(r);
+    }
+    merged
+}
+
+fn subtract_ranges(range: Range, excludes: &[Range]) -> Vec<Range> {
+    if excludes.is_empty() {
+        return vec![range];
+    }
+    let mut out: Vec<Range> = Vec::new();
+    let mut cursor = range.start();
+    for ex in excludes {
+        if ex.end() < cursor {
+            continue;
+        }
+        if ex.start() > range.end() {
+            break;
+        }
+        let ex_start = ex.start().max(range.start());
+        let ex_end = ex.end().min(range.end());
+        if cursor < ex_start
+            && let Ok(r) = Range::from_start_end(cursor, ex_start - 1)
+        {
+            out.push(r);
+        }
+        if ex_end == u32::MAX {
+            return out;
+        }
+        cursor = ex_end + 1;
+        if cursor > range.end() {
+            return out;
+        }
+    }
+    if cursor <= range.end()
+        && let Ok(r) = Range::from_start_end(cursor, range.end())
+    {
+        out.push(r);
+    }
+    out
 }
 
 /// Sum all bytes, wrapping to 16-bit.

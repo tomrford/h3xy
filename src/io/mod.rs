@@ -21,3 +21,14 @@ fn normalized_sorted_segments(hexfile: &crate::HexFile) -> Vec<Segment> {
     segments.sort_by_key(|s| s.start_address);
     segments
 }
+
+fn push_hex_byte(out: &mut Vec<u8>, byte: u8) {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    out.push(HEX[(byte >> 4) as usize]);
+    out.push(HEX[(byte & 0x0F) as usize]);
+}
+
+fn push_crlf(out: &mut Vec<u8>) {
+    out.push(b'\r');
+    out.push(b'\n');
+}

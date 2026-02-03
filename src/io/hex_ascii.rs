@@ -1,4 +1,4 @@
-use crate::io::{ParseError, normalized_sorted_segments};
+use crate::io::{ParseError, normalized_sorted_segments, push_crlf, push_hex_byte};
 use crate::{HexFile, Segment};
 
 #[derive(Debug, Clone)]
@@ -101,24 +101,21 @@ pub fn write_hex_ascii(hexfile: &HexFile, options: &HexAsciiWriteOptions) -> Vec
     for segment in segments {
         for &byte in &segment.data {
             if current_count == line_len {
-                out.push(b'\n');
+                push_crlf(&mut out);
                 current_count = 0;
             } else if current_count > 0 && !sep.is_empty() {
                 out.extend_from_slice(sep.as_bytes());
             }
-            let hex = format!("{:02X}", byte);
-            out.extend_from_slice(hex.as_bytes());
+            push_hex_byte(&mut out, byte);
             current_count += 1;
         }
     }
 
     if !out.is_empty() {
-        out.push(b'\n');
+        push_crlf(&mut out);
     }
 
-    // TEMP: HexView (Windows) emits CRLF; force CRLF for validation parity.
-    // Remove once the validation suite normalizes line endings.
-    normalize_crlf(out)
+    out
 }
 
 fn push_hex_token(digits: &[u8], out: &mut Vec<u8>, line: usize) -> Result<(), ParseError> {
@@ -157,19 +154,6 @@ fn push_hex_token(digits: &[u8], out: &mut Vec<u8>, line: usize) -> Result<(), P
         out.push(((hi << 4) | lo) as u8);
     }
     Ok(())
-}
-
-fn normalize_crlf(data: Vec<u8>) -> Vec<u8> {
-    let mut out = Vec::with_capacity(data.len());
-    let mut prev = 0u8;
-    for b in data {
-        if b == b'\n' && prev != b'\r' {
-            out.push(b'\r');
-        }
-        out.push(b);
-        prev = b;
-    }
-    out
 }
 
 #[cfg(test)]
