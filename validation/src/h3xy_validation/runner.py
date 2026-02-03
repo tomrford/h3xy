@@ -1,6 +1,7 @@
 """Validation runner - orchestrates hex generation, test execution, and reporting."""
 
 import argparse
+import os
 import json
 import subprocess
 import sys
@@ -224,7 +225,7 @@ class ValidationRunner:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=60,
+                timeout=int(os.environ.get("H3XY_COMPARE_TIMEOUT", "300")),
                 cwd=str(self._abs_path(self.config.project_root)),
             )
             duration_ms = (time.perf_counter() - start) * 1000
@@ -470,28 +471,50 @@ def main() -> int:
         help="Path to h3xy project root (default: ..)"
     )
     parser.add_argument(
-        "--inputs-dir", type=Path, default=Path("inputs"),
-        help="Input directory (default: inputs)"
+        "--inputs-dir", type=Path, default=None,
+        help="Input directory (default: scratchpad/validation_inputs when scratchpad exists)"
     )
     parser.add_argument(
-        "--outputs-dir", type=Path, default=Path("outputs"),
-        help="Output directory (default: outputs)"
+        "--outputs-dir", type=Path, default=None,
+        help="Output directory (default: scratchpad/validation_outputs when scratchpad exists)"
     )
     parser.add_argument(
-        "--compare-scratchpad", action="store_true",
+        "--compare-scratchpad", action="store_true", default=None,
         help="Run compare.sh with -s (scratchpad mode)"
     )
     parser.add_argument(
-        "--compare-copy-inputs", action="store_true",
+        "--compare-copy-inputs", action="store_true", default=None,
         help="Run compare.sh with -c (copy inputs into scratchpad)"
     )
 
     args = parser.parse_args()
+    scratchpad = Path(
+        os.environ.get("SCRATCHPAD", args.project_root / "scratchpad")
+    )
+    use_scratchpad_defaults = (
+        args.inputs_dir is None
+        and args.outputs_dir is None
+        and scratchpad.exists()
+    )
+    if use_scratchpad_defaults:
+        inputs_dir = scratchpad / "validation_inputs"
+        outputs_dir = scratchpad / "validation_outputs"
+        compare_use_scratchpad = (
+            True if args.compare_scratchpad is None else args.compare_scratchpad
+        )
+        compare_copy_inputs = (
+            True if args.compare_copy_inputs is None else args.compare_copy_inputs
+        )
+    else:
+        inputs_dir = args.inputs_dir or Path("inputs")
+        outputs_dir = args.outputs_dir or Path("outputs")
+        compare_use_scratchpad = bool(args.compare_scratchpad)
+        compare_copy_inputs = bool(args.compare_copy_inputs)
 
     config = RunConfig(
         seed=args.seed,
-        inputs_dir=args.inputs_dir,
-        outputs_dir=args.outputs_dir,
+        inputs_dir=inputs_dir,
+        outputs_dir=outputs_dir,
         random_input_count=args.random_inputs,
         fuzz_tests_per_file=args.fuzz_per_file,
         stop_on_first_failure=args.stop_on_fail,
@@ -501,8 +524,8 @@ def main() -> int:
         keep_outputs=args.keep_outputs,
         generate_inputs=not args.no_generate,
         project_root=args.project_root,
-        compare_use_scratchpad=args.compare_scratchpad,
-        compare_copy_inputs=args.compare_copy_inputs,
+        compare_use_scratchpad=compare_use_scratchpad,
+        compare_copy_inputs=compare_copy_inputs,
     )
 
     runner = ValidationRunner(config)

@@ -293,6 +293,13 @@ impl HexFile {
     /// If a range is specified, only include data in that range.
     fn collect_data_for_checksum(&self, options: &ChecksumOptions) -> Result<Vec<u8>, OpsError> {
         let normalized = self.normalized_lossy();
+        let needs_word_alignment = matches!(
+            options.algorithm,
+            ChecksumAlgorithm::WordSumBe
+                | ChecksumAlgorithm::WordSumLe
+                | ChecksumAlgorithm::WordSumBeTwosComplement
+                | ChecksumAlgorithm::WordSumLeTwosComplement
+        );
 
         let working = if let Some(forced) = options.forced_range.as_ref() {
             let mut combined = HexFile::new();
@@ -346,18 +353,65 @@ impl HexFile {
 
         let mut data = Vec::with_capacity(cap);
         let has_forced_range = options.forced_range.is_some();
+        let mut run_start: Option<u32> = None;
+        let mut run_len: usize = 0;
+        let mut prev_addr: Option<u32> = None;
+
+        let finalize_run = |run_start: u32, run_len: usize| -> Result<(), OpsError> {
+            if !needs_word_alignment {
+                return Ok(());
+            }
+            if run_start % 2 != 0 {
+                return Err(OpsError::AddressNotDivisible {
+                    address: run_start,
+                    divisor: 2,
+                });
+            }
+            if run_len % 2 != 0 {
+                return Err(OpsError::LengthNotMultiple {
+                    length: run_len,
+                    expected: 2,
+                    operation: "checksum word range".to_string(),
+                });
+            }
+            Ok(())
+        };
 
         if has_forced_range {
             // With forced range: iterate all addresses, fill gaps with 0xFF
             for addr in range.start()..=range.end() {
                 if is_excluded(addr, &options.exclude_ranges) {
+                    if let Some(start) = run_start.take() {
+                        finalize_run(start, run_len)?;
+                        run_len = 0;
+                        prev_addr = None;
+                    }
                     continue;
                 }
                 if let Some(ref target_range) = options.target_exclude
                     && target_range.contains(addr)
                 {
+                    if let Some(start) = run_start.take() {
+                        finalize_run(start, run_len)?;
+                        run_len = 0;
+                        prev_addr = None;
+                    }
                     continue;
                 }
+                if let Some(prev) = prev_addr {
+                    if addr != prev.saturating_add(1) {
+                        if let Some(start) = run_start.take() {
+                            finalize_run(start, run_len)?;
+                            run_len = 0;
+                        }
+                    }
+                }
+                if run_start.is_none() {
+                    run_start = Some(addr);
+                }
+                run_len += 1;
+                prev_addr = Some(addr);
+
                 if let Some(byte) = byte_map.get(&addr) {
                     data.push(*byte);
                 } else {
@@ -379,8 +433,25 @@ impl HexFile {
                 {
                     continue;
                 }
+                if let Some(prev) = prev_addr {
+                    if addr != prev.saturating_add(1) {
+                        if let Some(start) = run_start.take() {
+                            finalize_run(start, run_len)?;
+                            run_len = 0;
+                        }
+                    }
+                }
+                if run_start.is_none() {
+                    run_start = Some(addr);
+                }
+                run_len += 1;
+                prev_addr = Some(addr);
                 data.push(byte);
             }
+        }
+
+        if let Some(start) = run_start {
+            finalize_run(start, run_len)?;
         }
 
         Ok(data)
@@ -506,6 +577,41 @@ mod tests {
     fn test_word_sum_odd_length() {
         assert!(word_sum_be(&[0x01, 0x02, 0x03]).is_err());
         assert!(word_sum_le(&[0x01]).is_err());
+    }
+
+    #[test]
+    fn test_checksum_word_sum_odd_start_rejects() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1001, vec![0xAA, 0xBB])]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::WordSumBe,
+            ..ChecksumOptions::default()
+        };
+        let result = hf.calculate_checksum(&options);
+        assert!(matches!(
+            result,
+            Err(OpsError::AddressNotDivisible {
+                address: 0x1001,
+                divisor: 2
+            })
+        ));
+    }
+
+    #[test]
+    fn test_checksum_word_sum_odd_length_rejects() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0xAA, 0xBB, 0xCC])]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::WordSumLe,
+            ..ChecksumOptions::default()
+        };
+        let result = hf.calculate_checksum(&options);
+        assert!(matches!(
+            result,
+            Err(OpsError::LengthNotMultiple {
+                length: 3,
+                expected: 2,
+                ..
+            })
+        ));
     }
 
     #[test]

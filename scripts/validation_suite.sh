@@ -27,7 +27,9 @@ if [ -z "$VALIDATION_ARGS" ]; then
   SCRATCHPAD="${SCRATCHPAD:-$ROOT_DIR/scratchpad}"
   if [ -e "$SCRATCHPAD" ]; then
     SCRATCHPAD_REAL="$(readlink -f "$SCRATCHPAD")"
-    VALIDATION_ARGS="--inputs-dir $SCRATCHPAD_REAL/validation_inputs --outputs-dir $SCRATCHPAD_REAL/validation_outputs --compare-scratchpad"
+    VALIDATION_ARGS="--inputs-dir $SCRATCHPAD_REAL/validation_inputs --outputs-dir $SCRATCHPAD_REAL/validation_outputs --compare-scratchpad --compare-copy-inputs"
+  else
+    VALIDATION_ARGS="--compare-copy-inputs"
   fi
 fi
 

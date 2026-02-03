@@ -4,7 +4,7 @@ use crate::{HexFile, Segment};
 #[derive(Debug, Clone, Default)]
 pub struct BinaryWriteOptions {
     /// If set, fills gaps between min/max addresses with this byte.
-    /// If None, segments are concatenated in order of appearance.
+    /// If None, segments are concatenated in ascending address order.
     pub fill_gaps: Option<u8>,
 }
 
@@ -51,7 +51,8 @@ pub fn write_binary(hexfile: &HexFile, options: &BinaryWriteOptions) -> Vec<u8> 
         return Vec::new();
     }
 
-    let segments = hexfile.segments();
+    let mut segments: Vec<_> = hexfile.segments().iter().filter(|s| !s.is_empty()).collect();
+    segments.sort_by_key(|s| s.start_address);
     let total_len: usize = segments.iter().map(|s| s.len()).sum();
     let mut out = Vec::with_capacity(total_len);
     for segment in segments {
@@ -81,13 +82,13 @@ mod tests {
     }
 
     #[test]
-    fn test_write_binary_order_of_appearance() {
+    fn test_write_binary_address_order() {
         let hexfile = HexFile::with_segments(vec![
             Segment::new(0x2000, vec![0x01, 0x02]),
             Segment::new(0x1000, vec![0xAA]),
         ]);
         let out = write_binary(&hexfile, &BinaryWriteOptions::default());
-        assert_eq!(out, vec![0x01, 0x02, 0xAA]);
+        assert_eq!(out, vec![0xAA, 0x01, 0x02]);
     }
 
     #[test]

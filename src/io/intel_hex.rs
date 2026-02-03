@@ -212,18 +212,35 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
         options.bytes_per_line
     } as usize;
     let auto_mode = matches!(options.mode, IntelHexMode::Auto);
+    let max_addr = segments.iter().map(|s| s.end_address()).max();
+    let auto_force_linear = auto_mode && matches!(max_addr, Some(max) if max > 0xFFFFF);
     let fixed_mode = if auto_mode { None } else { Some(options.mode) };
 
     let mut current_extended: Option<u16> = None;
     let mut current_mode: Option<IntelHexMode> = fixed_mode;
 
+    let total_bytes: usize = segments.iter().map(|s| s.len()).sum();
+    let total_records: usize = if bytes_per_line == 0 {
+        0
+    } else {
+        segments
+            .iter()
+            .map(|s| (s.len() + bytes_per_line - 1) / bytes_per_line)
+            .sum()
+    };
+    // Rough reserve: 2 hex chars per byte + per-record overhead.
+    output.reserve(total_bytes.saturating_mul(2) + total_records.saturating_mul(12) + 64);
+
     for segment in segments {
         let mut addr = segment.start_address;
         let mut data_offset = 0;
+        let seg_start = segment.start_address;
 
         while data_offset < segment.len() {
             let line_mode = if let Some(mode) = fixed_mode {
                 mode
+            } else if auto_force_linear {
+                IntelHexMode::ExtendedLinear
             } else if addr > 0xFFFFF {
                 IntelHexMode::ExtendedLinear
             } else {
@@ -237,17 +254,27 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
 
             let mut should_emit =
                 current_extended != Some(needed_extended) || current_mode != Some(line_mode);
-            if auto_mode && line_mode == IntelHexMode::ExtendedSegment {
-                if addr <= 0xFFFF {
-                    if current_mode.is_none() && current_extended.is_none() {
-                        should_emit = false;
+            if auto_mode {
+                if line_mode == IntelHexMode::ExtendedSegment {
+                    if addr <= 0xFFFF {
+                        if current_mode.is_none() && current_extended.is_none() {
+                            should_emit = false;
+                        }
+                    } else {
+                        let upper = (addr >> 16) as u16;
+                        let needed_segment = upper << 12;
+                        if needed_extended != needed_segment {
+                            current_extended = Some(needed_segment);
+                        }
                     }
-                } else {
-                    let upper = (addr >> 16) as u16;
-                    let needed_segment = upper << 12;
-                    if needed_extended != needed_segment {
-                        current_extended = Some(needed_segment);
-                    }
+                }
+                if auto_force_linear
+                    && line_mode == IntelHexMode::ExtendedLinear
+                    && needed_extended == 0
+                    && current_mode.is_none()
+                    && current_extended.is_none()
+                {
+                    should_emit = false;
                 }
             }
 
@@ -266,7 +293,10 @@ pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec
 
             let remaining_in_bank = 0x10000u32.saturating_sub(offset_addr as u32) as usize;
             let remaining_data = segment.len() - data_offset;
-            let chunk_len = bytes_per_line.min(remaining_in_bank).min(remaining_data);
+            let offset_from_start = addr.checked_sub(seg_start).unwrap_or(0);
+            let line_offset = (offset_from_start % bytes_per_line as u32) as usize;
+            let line_remaining = bytes_per_line - line_offset;
+            let chunk_len = line_remaining.min(remaining_in_bank).min(remaining_data);
 
             let chunk = &segment.data[data_offset..data_offset + chunk_len];
             write_record(&mut output, RECORD_DATA, offset_addr, chunk);
@@ -470,7 +500,39 @@ mod tests {
         ]);
         let output = write_intel_hex(&hf, &IntelHexWriteOptions::default());
         let text = String::from_utf8(output).unwrap();
-        assert!(text.contains(":02000002")); // extended segment
-        assert!(text.contains(":02000004")); // extended linear
+        assert!(!text.contains(":02000002")); // extended segment suppressed when > 0xFFFFF
+        assert!(text.contains(":02000004")); // extended linear only
+    }
+
+    #[test]
+    fn test_write_extended_segment_first_line_respects_bytes_per_line() {
+        let data: Vec<u8> = (0u8..64u8).collect();
+        let hf = HexFile::with_segments(vec![Segment::new(0x10000, data)]);
+        let output = write_intel_hex(&hf, &IntelHexWriteOptions::default());
+        let text = String::from_utf8(output).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        let ext_idx = lines
+            .iter()
+            .position(|line| line.starts_with(":02000002"))
+            .expect("missing extended segment record");
+        let first_data = lines[ext_idx + 1];
+        let second_data = lines[ext_idx + 2];
+        assert!(first_data.starts_with(":20"));
+        assert!(second_data.starts_with(":20"));
+    }
+
+    #[test]
+    fn test_write_extended_segment_boundary_alignment() {
+        let data: Vec<u8> = (0u8..0x30u8).collect();
+        let hf = HexFile::with_segments(vec![Segment::new(0xFFF0, data)]);
+        let output = write_intel_hex(&hf, &IntelHexWriteOptions::default());
+        let text = String::from_utf8(output).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        let ext_idx = lines
+            .iter()
+            .position(|line| line.starts_with(":020000021000EC"))
+            .expect("missing extended segment record");
+        let first_data = lines[ext_idx + 1];
+        assert!(first_data.starts_with(":10"));
     }
 }

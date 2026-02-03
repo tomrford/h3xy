@@ -98,6 +98,14 @@ resolve_path() {
     fi
 }
 
+looks_like_range() {
+    local value="$1"
+    if [[ "$value" != *-* && "$value" != *,* && "$value" != *:* ]]; then
+        return 1
+    fi
+    [[ "$value" =~ ^[0-9A-Fa-fxX._:+-uUlLhH]+$ ]]
+}
+
 rewrite_arg_copy() {
     local arg="$1"
     local work_dir="$2"
@@ -118,6 +126,10 @@ rewrite_arg_copy() {
         local sep="${BASH_REMATCH[2]}"
         local rest="${BASH_REMATCH[3]}"
         local file_part="${rest%%;*}"
+        if looks_like_range "$file_part"; then
+            echo "$arg"
+            return
+        fi
         if [[ -f "$file_part" ]]; then
             local base
             base="$(basename "$file_part")"
@@ -149,6 +161,10 @@ rewrite_arg_win() {
         local sep="${BASH_REMATCH[2]}"
         local rest="${BASH_REMATCH[3]}"
         local file_part="${rest%%;*}"
+        if looks_like_range "$file_part"; then
+            echo "$arg"
+            return
+        fi
         if [[ -f "$file_part" ]]; then
             local resolved
             resolved="$(resolve_path "$file_part")"
@@ -383,6 +399,9 @@ run_hexview() {
 
     # For WSL, we may need to convert paths for input/output files
     if is_wsl && [[ $USE_SCRATCHPAD -eq 1 ]]; then
+        # Ensure output path exists so rewrite_arg_win converts it
+        mkdir -p "$(dirname "$HEXVIEW_OUT")"
+        : > "$HEXVIEW_OUT"
         # Convert all file args to Windows format (including merge inputs)
         local win_args=()
         local arg
@@ -416,9 +435,9 @@ run_cargo() {
     cd "$PROJECT_ROOT"
 
     if [[ $VERBOSE -eq 1 ]]; then
-        cargo run --quiet -- "${cargo_args[@]}"
+        cargo run --quiet --release -- "${cargo_args[@]}"
     else
-        cargo run --quiet -- "${cargo_args[@]}" 2>&1
+        cargo run --quiet --release -- "${cargo_args[@]}" 2>&1
     fi
 }
 

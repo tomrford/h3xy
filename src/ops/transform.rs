@@ -10,15 +10,6 @@ pub enum SwapMode {
     DWord,
 }
 
-impl SwapMode {
-    fn size(&self) -> usize {
-        match self {
-            SwapMode::Word => 2,
-            SwapMode::DWord => 4,
-        }
-    }
-}
-
 /// Options for alignment operations.
 #[derive(Debug, Clone)]
 pub struct AlignOptions {
@@ -149,14 +140,160 @@ impl HexFile {
     }
 
     /// Swap bytes within all segments (operates on raw segments).
-    /// Swaps complete chunks only; trailing bytes (when length not multiple of swap size) are left unchanged.
+    /// HexView parity:
+    /// - SWAPWORD: no-op if any segment starts on an odd address or total byte count is odd.
+    /// - SWAPLONG: no-op if span start or span length is not a multiple of 4.
     pub fn swap_bytes(&mut self, mode: SwapMode) -> Result<(), OpsError> {
-        let size = mode.size();
+        match mode {
+            SwapMode::Word => {
+                let total_len: usize = self.segments().iter().map(|s| s.len()).sum();
+                if total_len % 2 != 0 {
+                    return Ok(());
+                }
+                if self.segments().iter().any(|s| s.start_address % 2 != 0) {
+                    return Ok(());
+                }
 
-        for segment in self.segments_mut() {
-            // Swap only complete chunks; trailing bytes are left unchanged (HexView behavior)
-            for chunk in segment.data.chunks_exact_mut(size) {
-                chunk.reverse();
+                for segment in self.segments_mut() {
+                    for chunk in segment.data.chunks_exact_mut(2) {
+                        chunk.reverse();
+                    }
+                }
+            }
+            SwapMode::DWord => {
+                const HEXVIEW_SWAPLONG_LIMIT: usize = 0x1000000;
+                let Some(span_start) = self.segments().iter().map(|s| s.start_address).min()
+                else {
+                    return Ok(());
+                };
+                let Some(span_end) = self.segments().iter().map(|s| s.end_address()).max()
+                else {
+                    return Ok(());
+                };
+                let span_len = span_end
+                    .checked_sub(span_start)
+                    .and_then(|v| v.checked_add(1))
+                    .ok_or_else(|| {
+                        OpsError::AddressOverflow("swaplong span length overflows u32".into())
+                    })?;
+                if span_start % 4 != 0 || span_len % 4 != 0 {
+                    return Ok(());
+                }
+
+                if self.segments().len() == 1 {
+                    let segment = &mut self.segments_mut()[0];
+                    if segment.start_address == span_start
+                        && segment.len() == span_len as usize
+                    {
+                        // HexView quirk: large single spans repeat the first swapped word.
+                        if segment.len() >= HEXVIEW_SWAPLONG_LIMIT {
+                            if segment.data.len() < 4 {
+                                return Ok(());
+                            }
+                            let mut word = [
+                                segment.data[0],
+                                segment.data[1],
+                                segment.data[2],
+                                segment.data[3],
+                            ];
+                            word.reverse();
+                            for chunk in segment.data.chunks_exact_mut(4) {
+                                chunk.copy_from_slice(&word);
+                            }
+                            return Ok(());
+                        }
+                        for chunk in segment.data.chunks_exact_mut(4) {
+                            chunk.reverse();
+                        }
+                        return Ok(());
+                    }
+                }
+
+                let mut data_map: std::collections::HashMap<u32, u8> =
+                    std::collections::HashMap::new();
+                for segment in self.segments() {
+                    for (offset, &byte) in segment.data.iter().enumerate() {
+                        let Some(addr) = segment.start_address.checked_add(offset as u32) else {
+                            return Err(OpsError::AddressOverflow(format!(
+                                "swaplong address overflow (start={:#X}, offset={})",
+                                segment.start_address, offset
+                            )));
+                        };
+                        data_map.insert(addr, byte);
+                    }
+                }
+
+                let mut updates: std::collections::HashMap<u32, u8> =
+                    std::collections::HashMap::new();
+                let mut last_full: Option<[u8; 4]> = None;
+
+                let mut addr = span_start;
+                while addr <= span_end {
+                    if !data_map.contains_key(&addr) {
+                        if let Some(next) = addr.checked_add(4) {
+                            addr = next;
+                            continue;
+                        }
+                        break;
+                    }
+
+                    let mut word = [0u8; 4];
+                    let mut all_present = true;
+                    for i in 0..4 {
+                        let Some(a) = addr.checked_add(i as u32) else {
+                            return Err(OpsError::AddressOverflow(
+                                "swaplong address overflow".into(),
+                            ));
+                        };
+                        if let Some(byte) = data_map.get(&a) {
+                            word[i] = *byte;
+                        } else {
+                            all_present = false;
+                            if let Some(last) = last_full {
+                                word[i] = last[i];
+                            } else {
+                                word[i] = 0x00;
+                            }
+                        }
+                    }
+
+                    if all_present {
+                        last_full = Some(word);
+                    }
+
+                    let mut swapped = word;
+                    swapped.reverse();
+                    for i in 0..4 {
+                        let Some(a) = addr.checked_add(i as u32) else {
+                            return Err(OpsError::AddressOverflow(
+                                "swaplong address overflow".into(),
+                            ));
+                        };
+                        if data_map.contains_key(&a) {
+                            updates.insert(a, swapped[i]);
+                        }
+                    }
+
+                    if let Some(next) = addr.checked_add(4) {
+                        addr = next;
+                    } else {
+                        break;
+                    }
+                }
+
+                for segment in self.segments_mut() {
+                    for (offset, byte) in segment.data.iter_mut().enumerate() {
+                        let Some(addr) = segment.start_address.checked_add(offset as u32) else {
+                            return Err(OpsError::AddressOverflow(format!(
+                                "swaplong address overflow (start={:#X}, offset={})",
+                                segment.start_address, offset
+                            )));
+                        };
+                        if let Some(updated) = updates.get(&addr) {
+                            *byte = *updated;
+                        }
+                    }
+                }
             }
         }
 
@@ -635,13 +772,25 @@ mod tests {
     }
 
     #[test]
+    fn test_swap_dword_large_span_repeats_first_word() {
+        let mut data = vec![0xAA; 0x1000000];
+        data[0..4].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+        let mut hf = HexFile::with_segments(vec![Segment::new(0x0, data)]);
+        hf.swap_bytes(SwapMode::DWord).unwrap();
+
+        let seg = &hf.segments()[0].data;
+        assert_eq!(&seg[0..4], &[0x04, 0x03, 0x02, 0x01]);
+        assert_eq!(&seg[4..8], &[0x04, 0x03, 0x02, 0x01]);
+        assert_eq!(&seg[seg.len() - 4..], &[0x04, 0x03, 0x02, 0x01]);
+    }
+
+    #[test]
     fn test_swap_odd_length_leaves_trailing() {
-        // Odd-length segments: swap complete pairs, leave trailing byte unchanged
+        // HexView: odd total length => no-op
         let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0xAA, 0xBB, 0xCC])]);
         hf.swap_bytes(SwapMode::Word).unwrap();
 
-        // AA BB swapped to BB AA, CC left unchanged
-        assert_eq!(hf.segments()[0].data, vec![0xBB, 0xAA, 0xCC]);
+        assert_eq!(hf.segments()[0].data, vec![0xAA, 0xBB, 0xCC]);
     }
 
     #[test]
@@ -757,6 +906,55 @@ mod tests {
             hf.segments()[0].data,
             vec![0x04, 0x03, 0x02, 0x01, 0x08, 0x07, 0x06, 0x05]
         );
+    }
+
+    #[test]
+    fn test_swap_word_odd_start_noop() {
+        let mut hf = HexFile::with_segments(vec![Segment::new(0x1001, vec![0x11, 0x22])]);
+        hf.swap_bytes(SwapMode::Word).unwrap();
+        assert_eq!(hf.segments()[0].data, vec![0x11, 0x22]);
+    }
+
+    #[test]
+    fn test_swap_word_total_odd_noop() {
+        let mut hf = HexFile::with_segments(vec![
+            Segment::new(0x1000, vec![0xAA, 0xBB]),
+            Segment::new(0x2000, vec![0xCC]),
+        ]);
+        hf.swap_bytes(SwapMode::Word).unwrap();
+        assert_eq!(hf.segments()[0].data, vec![0xAA, 0xBB]);
+        assert_eq!(hf.segments()[1].data, vec![0xCC]);
+    }
+
+    #[test]
+    fn test_swap_dword_span_misaligned_noop() {
+        let mut hf = HexFile::with_segments(vec![Segment::new(0x1002, vec![0x01, 0x02, 0x03, 0x04])]);
+        hf.swap_bytes(SwapMode::DWord).unwrap();
+        assert_eq!(hf.segments()[0].data, vec![0x01, 0x02, 0x03, 0x04]);
+    }
+
+    #[test]
+    fn test_swap_dword_span_length_noop() {
+        let mut hf = HexFile::with_segments(vec![
+            Segment::new(0x1000, vec![0x01, 0x02, 0x03, 0x04]),
+            Segment::new(0x2000, vec![0x05, 0x06]),
+        ]);
+        hf.swap_bytes(SwapMode::DWord).unwrap();
+        assert_eq!(hf.segments()[0].data, vec![0x01, 0x02, 0x03, 0x04]);
+        assert_eq!(hf.segments()[1].data, vec![0x05, 0x06]);
+    }
+
+    #[test]
+    fn test_swap_dword_hexview_gap_fill() {
+        let mut hf = HexFile::with_segments(vec![
+            Segment::new(0x0000, vec![0x10, 0x11, 0x12, 0x13]),
+            Segment::new(0x0004, vec![0x20, 0x21]),
+            Segment::new(0x0008, vec![0x30, 0x31, 0x32, 0x33]),
+        ]);
+        hf.swap_bytes(SwapMode::DWord).unwrap();
+        assert_eq!(hf.segments()[0].data, vec![0x13, 0x12, 0x11, 0x10]);
+        assert_eq!(hf.segments()[1].data, vec![0x13, 0x12]);
+        assert_eq!(hf.segments()[2].data, vec![0x33, 0x32, 0x31, 0x30]);
     }
 
     #[test]
