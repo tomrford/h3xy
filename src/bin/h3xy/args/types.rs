@@ -68,6 +68,8 @@ pub struct Args {
 
     // Checksum: /CSx[:target] or /CSRx[:target] (little-endian, default target @append)
     pub checksum: Option<ChecksumParams>,
+    // Multi-checksum: /CSMx[:target] or /CSMRx[:target] (repeatable, ordered)
+    pub checksum_multi: Vec<ChecksumParams>,
 
     // Data processing (signature subset): /DPn[:@placement]:param[,section,key][;outfilename]
     pub data_processing: Option<DataProcessingParams>,

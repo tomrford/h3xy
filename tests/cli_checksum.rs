@@ -192,3 +192,79 @@ fn test_cli_checksum_invalid_forced_pattern() {
     let output = run_h3xy(&args);
     assert!(!output.status.success());
 }
+
+#[test]
+fn test_cli_checksum_multi_sequential_dependency() {
+    let dir = temp_dir("cli_checksum_multi_seq");
+    let input_path = dir.join("input.bin");
+    let out_path = dir.join("out.hex");
+    write_file(&input_path, &[0x01, 0x02, 0x03, 0x04]);
+
+    let args = vec![
+        format!("/IN:{};0x1000", input_path.display()),
+        "/CSM0:@0x1000".to_string(),
+        "/CSM0:@append".to_string(),
+        "/XI".to_string(),
+        "-o".to_string(),
+        out_path.display().to_string(),
+    ];
+    let output = run_h3xy(&args);
+    assert_success(&output);
+
+    let data = std::fs::read(&out_path).unwrap();
+    let hexfile = parse_intel_hex(&data).unwrap();
+    let norm = hexfile.normalized_lossy();
+    assert_eq!(
+        norm.read_bytes_contiguous(0x1000, 6).unwrap(),
+        vec![0x00, 0x07, 0x03, 0x04, 0x00, 0x0E]
+    );
+}
+
+#[test]
+fn test_cli_checksum_multi_mixed_targets_with_file() {
+    let dir = temp_dir("cli_checksum_multi_file");
+    let input_path = dir.join("input.bin");
+    let out_path = dir.join("out.hex");
+    let csum_path = dir.join("csum.txt");
+    write_file(&input_path, &[0x01, 0x02, 0x03, 0x04]);
+
+    let args = vec![
+        format!("/IN:{};0x1000", input_path.display()),
+        "/CSM0:@0x1000".to_string(),
+        "/CSM0:@append".to_string(),
+        format!("/CSMR0:{}", csum_path.display()),
+        "/XI".to_string(),
+        "-o".to_string(),
+        out_path.display().to_string(),
+    ];
+    let output = run_h3xy(&args);
+    assert_success(&output);
+
+    let data = std::fs::read(&out_path).unwrap();
+    let hexfile = parse_intel_hex(&data).unwrap();
+    let norm = hexfile.normalized_lossy();
+    assert_eq!(
+        norm.read_bytes_contiguous(0x1000, 6).unwrap(),
+        vec![0x00, 0x07, 0x03, 0x04, 0x00, 0x0E]
+    );
+    let text = std::fs::read_to_string(&csum_path).unwrap();
+    assert_eq!(text, "1C,00");
+}
+
+#[test]
+fn test_cli_checksum_reject_mix_legacy_and_multi() {
+    let dir = temp_dir("cli_checksum_mix_reject");
+    let input_path = dir.join("input.bin");
+    write_file(&input_path, &[0x01, 0x02, 0x03, 0x04]);
+
+    let args = vec![
+        format!("/IN:{};0x1000", input_path.display()),
+        "/CS0:@append".to_string(),
+        "/CSM0:@append".to_string(),
+    ];
+    let output = run_h3xy(&args);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("invalid option"));
+    assert!(stderr.contains("/CSM0:@append"));
+}

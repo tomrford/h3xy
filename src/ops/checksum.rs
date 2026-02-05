@@ -145,6 +145,13 @@ pub struct ChecksumOptions {
     pub target_exclude: Option<Range>,
 }
 
+/// One checksum operation in a sequential checksum chain.
+#[derive(Debug, Clone)]
+pub struct ChecksumJob {
+    pub options: ChecksumOptions,
+    pub target: ChecksumTarget,
+}
+
 impl Default for ChecksumOptions {
     fn default() -> Self {
         Self {
@@ -356,6 +363,18 @@ impl HexFile {
         }
 
         Ok(result)
+    }
+
+    /// Execute checksum jobs in order against the evolving HexFile state.
+    pub fn checksum_many_sequential(
+        &mut self,
+        jobs: &[ChecksumJob],
+    ) -> Result<Vec<Vec<u8>>, OpsError> {
+        let mut out = Vec::with_capacity(jobs.len());
+        for job in jobs {
+            out.push(self.checksum(&job.options, &job.target)?);
+        }
+        Ok(out)
     }
 
     /// Collect contiguous data for checksum calculation.
@@ -1181,6 +1200,35 @@ mod tests {
         let result = hf.calculate_checksum(&options).unwrap();
         // 0x01 + 0x04 = 0x05
         assert_eq!(result, vec![0x00, 0x05]);
+    }
+
+    #[test]
+    fn test_hexfile_checksum_many_sequential_uses_updated_state() {
+        let mut hf =
+            HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01, 0x02, 0x03, 0x04])]);
+        let jobs = vec![
+            ChecksumJob {
+                options: ChecksumOptions {
+                    algorithm: ChecksumAlgorithm::ByteSumBe,
+                    ..Default::default()
+                },
+                target: ChecksumTarget::Address(0x1000),
+            },
+            ChecksumJob {
+                options: ChecksumOptions {
+                    algorithm: ChecksumAlgorithm::ByteSumBe,
+                    ..Default::default()
+                },
+                target: ChecksumTarget::Append,
+            },
+        ];
+        let results = hf.checksum_many_sequential(&jobs).unwrap();
+        assert_eq!(results, vec![vec![0x00, 0x07], vec![0x00, 0x0E]]);
+        let norm = hf.normalized_lossy();
+        assert_eq!(
+            norm.read_bytes_contiguous(0x1000, 6).unwrap(),
+            vec![0x00, 0x07, 0x03, 0x04, 0x00, 0x0E]
+        );
     }
 
     #[test]
