@@ -130,6 +130,8 @@ cargo run -- [args]   # Run CLI
 - CLI auto-detect now scans up to first 25 non-empty lines for ASCII; if any non-ASCII, treat as binary input (manual behavior).
 - S-Record parsing accepts lowercase 's' prefix; CLI auto-detect recognizes it too.
 - HEX-ASCII import overlap now warns (stderr) and ignores input file, per manual; we still allow /IA + input when non-overlapping (assumption).
+- `/CSx` or `/CSRx` without `:target` now defaults to `@append` (manual parity); empty target (`/CSx:`) also maps to append.
+- Checksum method 19 assumption: SHA-512 input is `start_address (u32 BE) + data_length (u32 BE) + data_bytes`; `/CSR` reverses output bytes.
 
 ### TODOs (current)
 - Review segment overflow policy (saturating `end_address` vs strict error) once validation suite runs.

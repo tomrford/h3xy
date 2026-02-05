@@ -233,6 +233,22 @@ fn parse_checksum_option(
     Ok(false)
 }
 
+fn parse_bare_checksum_option(args: &mut Args, opt_upper: &str) -> Result<bool, ParseArgError> {
+    if let Some(algo) = opt_upper.strip_prefix("CSR")
+        && algo.chars().all(|ch| ch.is_ascii_digit())
+    {
+        args.checksum = Some(parse_checksum(algo, "@append", true)?);
+        return Ok(true);
+    }
+    if let Some(algo) = opt_upper.strip_prefix("CS")
+        && algo.chars().all(|ch| ch.is_ascii_digit())
+    {
+        args.checksum = Some(parse_checksum(algo, "@append", false)?);
+        return Ok(true);
+    }
+    Ok(false)
+}
+
 fn parse_data_processing_option(
     args: &mut Args,
     key_upper: &str,
@@ -448,6 +464,9 @@ pub(super) fn parse_option(args: &mut Args, opt: &str) -> Result<(), ParseArgErr
     let opt_upper = opt.to_ascii_uppercase();
 
     if parse_simple_flag(args, &opt_upper) {
+        return Ok(());
+    }
+    if parse_bare_checksum_option(args, &opt_upper)? {
         return Ok(());
     }
 

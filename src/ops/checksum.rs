@@ -9,14 +9,25 @@
 //! - 5: WordSum BE 2's complement
 //! - 6: WordSum LE 2's complement
 //! - 7: CRC-16 (poly 0x8005)
+//! - 8: CRC-16 (non-standard)
 //! - 9: CRC-32 IEEE
-//! - 12: Modular sum (simple byte sum)
+//! - 10: SHA-1
+//! - 11: RIPEMD-160
+//! - 12: WordSum LE 2's complement, BE output (GM new style)
 //! - 13: CRC-16 CCITT LE (poly 0x1021, init 0xFFFF)
 //! - 14: CRC-16 CCITT BE
+//! - 15: MD5
 //! - 17: CRC-16 CCITT LE init 0
 //! - 18: CRC-16 CCITT BE init 0
+//! - 19: SHA-512 including start address + length
+//! - 20: SHA-256
 
 use std::path::PathBuf;
+
+use md5::Md5;
+use ripemd::Ripemd160;
+use sha1::Sha1;
+use sha2::{Digest, Sha256, Sha512};
 
 use crate::{HexFile, OpsError, Range, Segment};
 
@@ -54,12 +65,18 @@ pub enum ChecksumAlgorithm {
     WordSumBeTwosComplement = 5,
     WordSumLeTwosComplement = 6,
     Crc16 = 7,
+    Crc16NonStandard = 8,
     Crc32 = 9,
+    Sha1 = 10,
+    Ripemd160 = 11,
     ModularSum = 12,
     Crc16CcittLe = 13,
     Crc16CcittBe = 14,
+    Md5 = 15,
     Crc16CcittLeInit0 = 17,
     Crc16CcittBeInit0 = 18,
+    Sha512AddressLength = 19,
+    Sha256 = 20,
 }
 
 impl ChecksumAlgorithm {
@@ -73,12 +90,18 @@ impl ChecksumAlgorithm {
             5 => Ok(Self::WordSumBeTwosComplement),
             6 => Ok(Self::WordSumLeTwosComplement),
             7 => Ok(Self::Crc16),
+            8 => Ok(Self::Crc16NonStandard),
             9 => Ok(Self::Crc32),
+            10 => Ok(Self::Sha1),
+            11 => Ok(Self::Ripemd160),
             12 => Ok(Self::ModularSum),
             13 => Ok(Self::Crc16CcittLe),
             14 => Ok(Self::Crc16CcittBe),
+            15 => Ok(Self::Md5),
             17 => Ok(Self::Crc16CcittLeInit0),
             18 => Ok(Self::Crc16CcittBeInit0),
+            19 => Ok(Self::Sha512AddressLength),
+            20 => Ok(Self::Sha256),
             _ => Err(OpsError::UnsupportedChecksumAlgorithm(index)),
         }
     }
@@ -87,6 +110,10 @@ impl ChecksumAlgorithm {
     pub fn result_size(&self) -> usize {
         match self {
             Self::Crc32 => 4,
+            Self::Sha1 | Self::Ripemd160 => 20,
+            Self::Md5 => 16,
+            Self::Sha256 => 32,
+            Self::Sha512AddressLength => 64,
             _ => 2,
         }
     }
@@ -165,6 +192,13 @@ impl HexFile {
             }
         }
 
+        fn reverse_if_requested(mut value: Vec<u8>, reverse: bool) -> Vec<u8> {
+            if reverse {
+                value.reverse();
+            }
+            value
+        }
+
         let result = match options.algorithm {
             ChecksumAlgorithm::ByteSumBe | ChecksumAlgorithm::ByteSumLe => {
                 let sum = byte_sum(&data);
@@ -194,8 +228,44 @@ impl HexFile {
                 u16_bytes(twos, use_le)
             }
             ChecksumAlgorithm::ModularSum => {
-                let sum = byte_sum(&data);
-                u16_bytes(sum, use_le)
+                // HexView method 12: same arithmetic as method 6, but BE output by default.
+                let sum = word_sum_le(&data)?;
+                let twos = (!sum).wrapping_add(1);
+                u16_bytes(twos, use_le)
+            }
+            ChecksumAlgorithm::Crc16NonStandard => {
+                let crc = crc16_non_standard(&data);
+                u16_bytes(crc, use_le)
+            }
+            ChecksumAlgorithm::Sha1 => {
+                reverse_if_requested(Sha1::digest(&data).to_vec(), options.little_endian_output)
+            }
+            ChecksumAlgorithm::Ripemd160 => reverse_if_requested(
+                Ripemd160::digest(&data).to_vec(),
+                options.little_endian_output,
+            ),
+            ChecksumAlgorithm::Md5 => {
+                reverse_if_requested(Md5::digest(&data).to_vec(), options.little_endian_output)
+            }
+            ChecksumAlgorithm::Sha256 => {
+                reverse_if_requested(Sha256::digest(&data).to_vec(), options.little_endian_output)
+            }
+            ChecksumAlgorithm::Sha512AddressLength => {
+                let start = self
+                    .resolve_effective_checksum_range(options)?
+                    .map(|range| range.start())
+                    .unwrap_or_default();
+                let len = u32::try_from(data.len()).map_err(|_| {
+                    OpsError::AddressOverflow(format!(
+                        "checksum data length exceeds u32 for SHA-512 metadata: {}",
+                        data.len()
+                    ))
+                })?;
+                let mut hasher = Sha512::new();
+                hasher.update(start.to_be_bytes());
+                hasher.update(len.to_be_bytes());
+                hasher.update(&data);
+                reverse_if_requested(hasher.finalize().to_vec(), options.little_endian_output)
             }
             ChecksumAlgorithm::Crc16 => {
                 let crc = crc16_arc(&data);
@@ -312,18 +382,7 @@ impl HexFile {
             normalized
         };
 
-        let effective_range =
-            if let Some(r) = options.range {
-                Some(r)
-            } else if let Some(forced) = options.forced_range.as_ref() {
-                Some(forced.range)
-            } else if let (Some(min), Some(max)) = (working.min_address(), working.max_address()) {
-                Some(Range::from_start_end(min, max).map_err(|e| {
-                    OpsError::AddressOverflow(format!("checksum range invalid: {e}"))
-                })?)
-            } else {
-                None
-            };
+        let effective_range = self.resolve_effective_checksum_range(options)?;
 
         let Some(range) = effective_range else {
             return Ok(Vec::new());
@@ -508,6 +567,24 @@ impl HexFile {
 
         Ok(data)
     }
+
+    fn resolve_effective_checksum_range(
+        &self,
+        options: &ChecksumOptions,
+    ) -> Result<Option<Range>, OpsError> {
+        if let Some(range) = options.range {
+            return Ok(Some(range));
+        }
+        if let Some(forced) = options.forced_range.as_ref() {
+            return Ok(Some(forced.range));
+        }
+        if let (Some(min), Some(max)) = (self.min_address(), self.max_address()) {
+            return Ok(Some(Range::from_start_end(min, max).map_err(|e| {
+                OpsError::AddressOverflow(format!("checksum range invalid: {e}"))
+            })?));
+        }
+        Ok(None)
+    }
 }
 
 fn build_pattern_data(range: Range, pattern: &[u8]) -> Result<Vec<u8>, OpsError> {
@@ -625,6 +702,19 @@ fn crc16_arc(data: &[u8]) -> u16 {
     CRC.checksum(data)
 }
 
+/// CRC-16 non-standard variant from HexView expdatproc method 8.
+fn crc16_non_standard(data: &[u8]) -> u16 {
+    let mut crc = 0xFFFFu16;
+    for &byte in data {
+        crc = crc.rotate_left(8);
+        crc ^= byte as u16;
+        crc ^= (crc & 0x00FF) >> 4;
+        crc ^= crc.wrapping_shl(12);
+        crc ^= (crc & 0x00FF).wrapping_shl(5);
+    }
+    !crc
+}
+
 /// CRC-32 IEEE (ISO-HDLC).
 fn crc32_iso_hdlc(data: &[u8]) -> u32 {
     const CRC: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_32_ISO_HDLC);
@@ -731,6 +821,12 @@ mod tests {
     fn test_crc16_arc() {
         // Known test vector: "123456789" -> 0xBB3D
         assert_eq!(crc16_arc(b"123456789"), 0xBB3D);
+    }
+
+    #[test]
+    fn test_crc16_non_standard() {
+        // HexView algorithm 8 pseudocode reference vector.
+        assert_eq!(crc16_non_standard(b"123456789"), 0xD64E);
     }
 
     #[test]
@@ -907,8 +1003,13 @@ mod tests {
     fn test_algorithm_from_index() {
         assert!(ChecksumAlgorithm::from_index(0).is_ok());
         assert!(ChecksumAlgorithm::from_index(9).is_ok());
-        assert!(ChecksumAlgorithm::from_index(8).is_err()); // not implemented
-        assert!(ChecksumAlgorithm::from_index(10).is_err()); // SHA-1
+        assert!(ChecksumAlgorithm::from_index(8).is_ok());
+        assert!(ChecksumAlgorithm::from_index(10).is_ok());
+        assert!(ChecksumAlgorithm::from_index(11).is_ok());
+        assert!(ChecksumAlgorithm::from_index(15).is_ok());
+        assert!(ChecksumAlgorithm::from_index(19).is_ok());
+        assert!(ChecksumAlgorithm::from_index(20).is_ok());
+        assert!(ChecksumAlgorithm::from_index(21).is_err());
     }
 
     #[test]
@@ -916,6 +1017,11 @@ mod tests {
         assert_eq!(ChecksumAlgorithm::Crc32.result_size(), 4);
         assert_eq!(ChecksumAlgorithm::ByteSumBe.result_size(), 2);
         assert_eq!(ChecksumAlgorithm::Crc16.result_size(), 2);
+        assert_eq!(ChecksumAlgorithm::Sha1.result_size(), 20);
+        assert_eq!(ChecksumAlgorithm::Ripemd160.result_size(), 20);
+        assert_eq!(ChecksumAlgorithm::Md5.result_size(), 16);
+        assert_eq!(ChecksumAlgorithm::Sha256.result_size(), 32);
+        assert_eq!(ChecksumAlgorithm::Sha512AddressLength.result_size(), 64);
     }
 
     #[test]
@@ -1075,5 +1181,125 @@ mod tests {
         let result = hf.calculate_checksum(&options).unwrap();
         // 0x01 + 0x04 = 0x05
         assert_eq!(result, vec![0x00, 0x05]);
+    }
+
+    #[test]
+    fn test_hexfile_checksum_method12_matches_wordsum_le_twos_complement_be() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0x34, 0x12, 0x78, 0x56])]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::ModularSum,
+            range: None,
+            little_endian_output: false,
+            ..Default::default()
+        };
+        let result = hf.calculate_checksum(&options).unwrap();
+        assert_eq!(result, vec![0x97, 0x54]);
+    }
+
+    #[test]
+    fn test_hexfile_checksum_sha1() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1000, b"abc".to_vec())]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::Sha1,
+            ..Default::default()
+        };
+        let result = hf.calculate_checksum(&options).unwrap();
+        assert_eq!(
+            result,
+            vec![
+                0xA9, 0x99, 0x3E, 0x36, 0x47, 0x06, 0x81, 0x6A, 0xBA, 0x3E, 0x25, 0x71, 0x78, 0x50,
+                0xC2, 0x6C, 0x9C, 0xD0, 0xD8, 0x9D
+            ]
+        );
+    }
+
+    #[test]
+    fn test_hexfile_checksum_sha1_reversed_for_csr() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1000, b"abc".to_vec())]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::Sha1,
+            little_endian_output: true,
+            ..Default::default()
+        };
+        let result = hf.calculate_checksum(&options).unwrap();
+        assert_eq!(
+            result,
+            vec![
+                0x9D, 0xD8, 0xD0, 0x9C, 0x6C, 0xC2, 0x50, 0x78, 0x71, 0x25, 0x3E, 0xBA, 0x6A, 0x81,
+                0x06, 0x47, 0x36, 0x3E, 0x99, 0xA9
+            ]
+        );
+    }
+
+    #[test]
+    fn test_hexfile_checksum_ripemd160() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1000, b"abc".to_vec())]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::Ripemd160,
+            ..Default::default()
+        };
+        let result = hf.calculate_checksum(&options).unwrap();
+        assert_eq!(
+            result,
+            vec![
+                0x8E, 0xB2, 0x08, 0xF7, 0xE0, 0x5D, 0x98, 0x7A, 0x9B, 0x04, 0x4A, 0x8E, 0x98, 0xC6,
+                0xB0, 0x87, 0xF1, 0x5A, 0x0B, 0xFC
+            ]
+        );
+    }
+
+    #[test]
+    fn test_hexfile_checksum_md5() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1000, b"abc".to_vec())]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::Md5,
+            ..Default::default()
+        };
+        let result = hf.calculate_checksum(&options).unwrap();
+        assert_eq!(
+            result,
+            vec![
+                0x90, 0x01, 0x50, 0x98, 0x3C, 0xD2, 0x4F, 0xB0, 0xD6, 0x96, 0x3F, 0x7D, 0x28, 0xE1,
+                0x7F, 0x72
+            ]
+        );
+    }
+
+    #[test]
+    fn test_hexfile_checksum_sha256() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1000, b"abc".to_vec())]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::Sha256,
+            ..Default::default()
+        };
+        let result = hf.calculate_checksum(&options).unwrap();
+        assert_eq!(
+            result,
+            vec![
+                0xBA, 0x78, 0x16, 0xBF, 0x8F, 0x01, 0xCF, 0xEA, 0x41, 0x41, 0x40, 0xDE, 0x5D, 0xAE,
+                0x22, 0x23, 0xB0, 0x03, 0x61, 0xA3, 0x96, 0x17, 0x7A, 0x9C, 0xB4, 0x10, 0xFF, 0x61,
+                0xF2, 0x00, 0x15, 0xAD
+            ]
+        );
+    }
+
+    #[test]
+    fn test_hexfile_checksum_sha512_address_length() {
+        let hf = HexFile::with_segments(vec![Segment::new(0x1000, b"abc".to_vec())]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::Sha512AddressLength,
+            ..Default::default()
+        };
+        let result = hf.calculate_checksum(&options).unwrap();
+        assert_eq!(
+            result,
+            vec![
+                0x4F, 0x13, 0x88, 0xDA, 0xE9, 0x18, 0xCC, 0xAC, 0xF6, 0xC2, 0xAA, 0xB1, 0x84, 0xC7,
+                0xFE, 0xFD, 0xCB, 0x61, 0x69, 0x3B, 0x4A, 0x1B, 0x18, 0x90, 0x46, 0x18, 0x68, 0x65,
+                0xF9, 0x5C, 0x27, 0x49, 0xC0, 0xEA, 0xE2, 0x09, 0x8B, 0x75, 0x0E, 0x50, 0x8D, 0x8B,
+                0xFA, 0x60, 0xD4, 0x4A, 0x70, 0x81, 0x2D, 0xAD, 0xE3, 0xB2, 0xE0, 0x87, 0x38, 0x9E,
+                0x00, 0xCE, 0xED, 0x35, 0xB3, 0x3E, 0xB9, 0x54
+            ]
+        );
     }
 }

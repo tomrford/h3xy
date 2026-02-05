@@ -1,5 +1,5 @@
-use super::*;
 use super::super::types::ChecksumTarget;
+use super::*;
 
 #[test]
 fn test_output_record_type_requires_length() {
@@ -20,6 +20,25 @@ fn test_parse_af_no_separator_hex() {
     let mut args = Args::default();
     parse_option(&mut args, "AF0A").unwrap();
     assert_eq!(args.align_fill, 0x0A);
+}
+
+#[test]
+fn test_parse_checksum_without_target_defaults_append() {
+    let mut args = Args::default();
+    parse_option(&mut args, "CS0").unwrap();
+    let checksum = args.checksum.expect("checksum parsed");
+    assert_eq!(checksum.algorithm, 0);
+    assert!(matches!(checksum.target, ChecksumTarget::Append));
+}
+
+#[test]
+fn test_parse_checksum_reverse_without_target_defaults_append() {
+    let mut args = Args::default();
+    parse_option(&mut args, "CSR9").unwrap();
+    let checksum = args.checksum.expect("checksum parsed");
+    assert_eq!(checksum.algorithm, 9);
+    assert!(checksum.little_endian);
+    assert!(matches!(checksum.target, ChecksumTarget::Append));
 }
 
 #[test]

@@ -66,7 +66,7 @@ pub struct Args {
     pub align_fill: u8,
     pub align_erase: Option<u32>, // /AE:zzzz
 
-    // Checksum: /CSx:target or /CSRx:target (little-endian)
+    // Checksum: /CSx[:target] or /CSRx[:target] (little-endian, default target @append)
     pub checksum: Option<ChecksumParams>,
 
     // Data processing (signature subset): /DPn[:@placement]:param[,section,key][;outfilename]
