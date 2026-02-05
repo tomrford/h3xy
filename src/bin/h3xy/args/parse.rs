@@ -3,9 +3,9 @@ use std::path::PathBuf;
 use crate::Range;
 
 use super::parse_util::{
-    parse_checksum, parse_dspic_op, parse_hex_ascii_params, parse_hex_bytes, parse_hexview_ranges,
-    parse_import_param, parse_merge_params, parse_number, parse_output_params, parse_remap,
-    split_option, strip_quotes,
+    parse_checksum, parse_data_processing_params, parse_dspic_op, parse_hex_ascii_params,
+    parse_hex_bytes, parse_hexview_ranges, parse_import_param, parse_merge_params, parse_number,
+    parse_output_params, parse_remap, parse_signature_verify_params, split_option, strip_quotes,
 };
 use super::types::{Args, MergeParam, OutputFormat, ParseArgError};
 
@@ -242,10 +242,22 @@ fn parse_data_processing_option(
         let method = method_str
             .parse::<u8>()
             .map_err(|_| ParseArgError::InvalidNumber(method_str.to_string()))?;
-        args.data_processing = Some(super::types::DataProcessingParams {
-            method,
-            param: value.to_string(),
-        });
+        args.data_processing = Some(parse_data_processing_params(method, value)?);
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+fn parse_signature_verify_option(
+    args: &mut Args,
+    key_upper: &str,
+    value: &str,
+) -> Result<bool, ParseArgError> {
+    if let Some(method_str) = key_upper.strip_prefix("SV") {
+        let method = method_str
+            .parse::<u8>()
+            .map_err(|_| ParseArgError::InvalidNumber(method_str.to_string()))?;
+        args.signature_verify = Some(parse_signature_verify_params(method, value)?);
         return Ok(true);
     }
     Ok(false)
@@ -476,6 +488,7 @@ pub(super) fn parse_option(args: &mut Args, opt: &str) -> Result<(), ParseArgErr
             parse_numeric_option,
             parse_checksum_option,
             parse_data_processing_option,
+            parse_signature_verify_option,
             parse_dspic_option,
             parse_value_option,
         ];
