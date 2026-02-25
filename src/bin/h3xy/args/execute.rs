@@ -6,6 +6,10 @@ use crate::{
 use super::error::{CliError, ExecuteOutput};
 use super::io::{FsProvider, ReadProvider, write_output_for_args};
 use super::io::{load_binary_input, load_hex_ascii_input, load_input, load_intel_hex_16bit_input};
+use super::signature::{
+    apply_data_processing, apply_signature_verification, is_supported_data_processing_method,
+    is_supported_signature_verify_method,
+};
 use super::types::{Args, ChecksumTarget, ParseArgError};
 use std::collections::HashMap;
 use std::path::Path;
@@ -45,10 +49,21 @@ impl Args {
                 "postbuild (/PB) is not supported yet".into(),
             ));
         }
-        if self.data_processing.is_some() {
-            return Err(CliError::Unsupported(
-                "data processing (/DP) is not supported yet".into(),
-            ));
+        if let Some(ref params) = self.data_processing
+            && !is_supported_data_processing_method(params.method)
+        {
+            return Err(CliError::Unsupported(format!(
+                "data processing (/DP{}) is not supported yet",
+                params.method
+            )));
+        }
+        if let Some(ref params) = self.signature_verify
+            && !is_supported_signature_verify_method(params.method)
+        {
+            return Err(CliError::Unsupported(format!(
+                "signature verification (/SV{}) is not supported yet",
+                params.method
+            )));
         }
         if self.import_binary.is_some() && self.import_hex_ascii.is_some() {
             return Err(CliError::Unsupported(
@@ -90,9 +105,11 @@ impl Args {
             .map_err(|e| match e {
                 PipelineError::Ops(err) => CliError::Other(err.to_string()),
                 PipelineError::Log(err) => CliError::Other(format!("/L: {err}")),
-            })?;
+        })?;
         let mut hexfile = result.hexfile;
         let checksum_bytes = self.apply_checksum(&mut hexfile)?;
+        let _signature_bytes = self.apply_data_processing(&mut hexfile)?;
+        self.apply_signature_verification(&hexfile)?;
         self.write_outputs(&hexfile, provider)?;
 
         Ok(ExecuteOutput { checksum_bytes })
@@ -112,9 +129,11 @@ impl Args {
             .map_err(|e| match e {
                 PipelineError::Ops(err) => CliError::Other(err.to_string()),
                 PipelineError::Log(err) => CliError::Other(format!("/L: {err}")),
-            })?;
+        })?;
         let mut hexfile = result.hexfile;
         let checksum_bytes = self.apply_checksum(&mut hexfile)?;
+        let _signature_bytes = self.apply_data_processing(&mut hexfile)?;
+        self.apply_signature_verification(&hexfile)?;
         self.write_outputs(&hexfile, &provider)?;
 
         Ok(ExecuteOutput { checksum_bytes })
@@ -437,6 +456,20 @@ impl Args {
         }
 
         Ok(Some(result))
+    }
+
+    fn apply_data_processing(&self, hexfile: &mut crate::HexFile) -> Result<Option<Vec<u8>>, CliError> {
+        let Some(ref params) = self.data_processing else {
+            return Ok(None);
+        };
+        apply_data_processing(hexfile, params)
+    }
+
+    fn apply_signature_verification(&self, hexfile: &crate::HexFile) -> Result<(), CliError> {
+        let Some(ref params) = self.signature_verify else {
+            return Ok(());
+        };
+        apply_signature_verification(hexfile, params)
     }
 
     fn write_outputs<P: ReadProvider>(

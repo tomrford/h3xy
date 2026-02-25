@@ -69,8 +69,10 @@ pub struct Args {
     // Checksum: /CSx:target or /CSRx:target (little-endian)
     pub checksum: Option<ChecksumParams>,
 
-    // Data processing: /DPn:param
+    // Data processing (signature subset): /DPn[:@placement]:param[,section,key][;outfilename]
     pub data_processing: Option<DataProcessingParams>,
+    // Signature verification: /SVn:keyinfo!signatureinfo
+    pub signature_verify: Option<SignatureVerifyParams>,
 
     // Split blocks: /sb:size
     pub split_block_size: Option<u32>,
@@ -147,7 +149,16 @@ pub enum ChecksumTarget {
 #[derive(Debug, Clone)]
 pub struct DataProcessingParams {
     pub method: u8,
-    pub param: String,
+    pub placement: Option<ChecksumTarget>,
+    pub key_info: String,
+    pub output_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SignatureVerifyParams {
+    pub method: u8,
+    pub key_info: String,
+    pub signature_info: String,
 }
 
 #[derive(Debug, Clone)]

@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use crate::Range;
 
 use super::types::{
-    ChecksumParams, ChecksumTarget, DspicOp, ForcedRange, ImportParam, MergeParam, ParseArgError,
-    RemapParams,
+    ChecksumParams, ChecksumTarget, DataProcessingParams, DspicOp, ForcedRange, ImportParam,
+    MergeParam, ParseArgError, RemapParams, SignatureVerifyParams,
 };
 
 pub(super) fn split_option(opt: &str) -> Option<(&str, &str)> {
@@ -264,17 +264,7 @@ pub(super) fn parse_checksum(
     }
 
     let target = if let Some(stripped) = target_str.strip_prefix('@') {
-        let stripped_upper = stripped.to_ascii_uppercase();
-        match stripped_upper.as_str() {
-            "APPEND" => ChecksumTarget::Append,
-            "BEGIN" => ChecksumTarget::Begin,
-            "UPFRONT" => ChecksumTarget::Prepend,
-            "END" => ChecksumTarget::OverwriteEnd,
-            _ => {
-                let addr = parse_number(stripped)?;
-                ChecksumTarget::Address(addr)
-            }
-        }
+        parse_placement_target(stripped)?
     } else {
         ChecksumTarget::File(PathBuf::from(target_str))
     };
@@ -286,6 +276,82 @@ pub(super) fn parse_checksum(
         range,
         forced_range,
         exclude_ranges,
+    })
+}
+
+fn parse_placement_target(target: &str) -> Result<ChecksumTarget, ParseArgError> {
+    let target_upper = target.to_ascii_uppercase();
+    match target_upper.as_str() {
+        "APPEND" => Ok(ChecksumTarget::Append),
+        "BEGIN" => Ok(ChecksumTarget::Begin),
+        "UPFRONT" => Ok(ChecksumTarget::Prepend),
+        "END" => Ok(ChecksumTarget::OverwriteEnd),
+        _ => Ok(ChecksumTarget::Address(parse_number(target)?)),
+    }
+}
+
+pub(super) fn parse_data_processing_params(
+    method: u8,
+    value: &str,
+) -> Result<DataProcessingParams, ParseArgError> {
+    let (params_part, output_file) = if let Some((left, right)) = value.split_once(';') {
+        let output = strip_quotes(right).trim();
+        let output_file = if output.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(output))
+        };
+        (left, output_file)
+    } else {
+        (value, None)
+    };
+
+    let (placement, key_and_meta) = if let Some(rest) = params_part.strip_prefix('@') {
+        let (placement_raw, right) = rest.split_once(':').ok_or_else(|| {
+            ParseArgError::InvalidOption("data processing placement missing ':'".to_string())
+        })?;
+        (Some(parse_placement_target(placement_raw)?), right)
+    } else {
+        (None, params_part)
+    };
+
+    let key_info = strip_quotes(key_and_meta)
+        .split(',')
+        .next()
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
+    if key_info.is_empty() {
+        return Err(ParseArgError::MissingValue(format!("/DP{method} keyinfo")));
+    }
+
+    Ok(DataProcessingParams {
+        method,
+        placement,
+        key_info,
+        output_file,
+    })
+}
+
+pub(super) fn parse_signature_verify_params(
+    method: u8,
+    value: &str,
+) -> Result<SignatureVerifyParams, ParseArgError> {
+    let (key_raw, signature_raw) = value.split_once('!').ok_or_else(|| {
+        ParseArgError::InvalidOption("signature verification requires keyinfo!signatureinfo".into())
+    })?;
+    let key_info = strip_quotes(key_raw).trim().to_string();
+    let signature_info = strip_quotes(signature_raw).trim().to_string();
+    if key_info.is_empty() {
+        return Err(ParseArgError::MissingValue(format!("/SV{method} keyinfo")));
+    }
+    if signature_info.is_empty() {
+        return Err(ParseArgError::MissingValue(format!("/SV{method} signatureinfo")));
+    }
+    Ok(SignatureVerifyParams {
+        method,
+        key_info,
+        signature_info,
     })
 }
 
@@ -348,6 +414,28 @@ pub(super) fn parse_output_params(s: &str) -> Result<(Option<u8>, Option<u8>), P
     };
 
     Ok((len, rec_type))
+}
+
+pub(super) fn parse_hex_ascii_params(
+    value: &str,
+) -> Result<(Option<u32>, Option<String>), ParseArgError> {
+    if value.is_empty() {
+        return Ok((None, None));
+    }
+
+    let mut parts = value.splitn(2, ':');
+    let len_part = parts.next().unwrap_or_default();
+    let sep_part = parts.next();
+
+    let line_length = if len_part.is_empty() {
+        None
+    } else {
+        Some(parse_number(len_part)?)
+    };
+
+    let separator = sep_part.map(|s| strip_quotes(s).to_string());
+
+    Ok((line_length, separator))
 }
 
 #[cfg(test)]
@@ -438,26 +526,19 @@ mod tests {
         let result = parse_checksum("0", "@append;!0x1000-0x1001#F", false);
         assert!(result.is_err());
     }
-}
 
-pub(super) fn parse_hex_ascii_params(
-    value: &str,
-) -> Result<(Option<u32>, Option<String>), ParseArgError> {
-    if value.is_empty() {
-        return Ok((None, None));
+    #[test]
+    fn test_parse_data_processing_params_with_placement_and_output() {
+        let params = parse_data_processing_params(32, "@append:key.pem;sig.bin").unwrap();
+        assert!(matches!(params.placement, Some(ChecksumTarget::Append)));
+        assert_eq!(params.key_info, "key.pem");
+        assert_eq!(params.output_file, Some(PathBuf::from("sig.bin")));
     }
 
-    let mut parts = value.splitn(2, ':');
-    let len_part = parts.next().unwrap_or_default();
-    let sep_part = parts.next();
-
-    let line_length = if len_part.is_empty() {
-        None
-    } else {
-        Some(parse_number(len_part)?)
-    };
-
-    let separator = sep_part.map(|s| strip_quotes(s).to_string());
-
-    Ok((line_length, separator))
+    #[test]
+    fn test_parse_signature_verify_params() {
+        let params = parse_signature_verify_params(4, "pub.pem!sig.bin").unwrap();
+        assert_eq!(params.key_info, "pub.pem");
+        assert_eq!(params.signature_info, "sig.bin");
+    }
 }

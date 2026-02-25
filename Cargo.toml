@@ -10,4 +10,8 @@ keywords = ["hex", "intel-hex", "srec", "firmware"]
 
 [dependencies]
 crc = "3.4.0"
+ed25519-dalek = { version = "2.1.1", features = ["digest", "pem", "pkcs8"] }
+rsa = { version = "0.9.8", features = ["getrandom", "sha2"] }
+sha2 = "0.10.9"
 thiserror = "2.0.17"
+x509-cert = "0.2.5"
