@@ -222,12 +222,89 @@ fn parse_checksum_option(
     key_upper: &str,
     value: &str,
 ) -> Result<bool, ParseArgError> {
+    fn reject_mixed(args: &Args, is_multi: bool) -> Result<(), ParseArgError> {
+        if is_multi && args.checksum.is_some() {
+            return Err(ParseArgError::InvalidOption(
+                "cannot combine /CS* with /CSM*".to_string(),
+            ));
+        }
+        if !is_multi && !args.checksum_multi.is_empty() {
+            return Err(ParseArgError::InvalidOption(
+                "cannot combine /CS* with /CSM*".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    if let Some(algo) = key_upper.strip_prefix("CSMR") {
+        reject_mixed(args, true)?;
+        args.checksum_multi.push(parse_checksum(algo, value, true)?);
+        return Ok(true);
+    }
+    if let Some(algo) = key_upper.strip_prefix("CSM") {
+        reject_mixed(args, true)?;
+        args.checksum_multi
+            .push(parse_checksum(algo, value, false)?);
+        return Ok(true);
+    }
     if let Some(algo) = key_upper.strip_prefix("CSR") {
+        reject_mixed(args, false)?;
         args.checksum = Some(parse_checksum(algo, value, true)?);
         return Ok(true);
     }
     if let Some(algo) = key_upper.strip_prefix("CS") {
+        reject_mixed(args, false)?;
         args.checksum = Some(parse_checksum(algo, value, false)?);
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+fn parse_bare_checksum_option(args: &mut Args, opt_upper: &str) -> Result<bool, ParseArgError> {
+    if let Some(algo) = opt_upper.strip_prefix("CSMR")
+        && algo.chars().all(|ch| ch.is_ascii_digit())
+    {
+        if args.checksum.is_some() {
+            return Err(ParseArgError::InvalidOption(
+                "cannot combine /CS* with /CSM*".to_string(),
+            ));
+        }
+        args.checksum_multi
+            .push(parse_checksum(algo, "@append", true)?);
+        return Ok(true);
+    }
+    if let Some(algo) = opt_upper.strip_prefix("CSM")
+        && algo.chars().all(|ch| ch.is_ascii_digit())
+    {
+        if args.checksum.is_some() {
+            return Err(ParseArgError::InvalidOption(
+                "cannot combine /CS* with /CSM*".to_string(),
+            ));
+        }
+        args.checksum_multi
+            .push(parse_checksum(algo, "@append", false)?);
+        return Ok(true);
+    }
+    if let Some(algo) = opt_upper.strip_prefix("CSR")
+        && algo.chars().all(|ch| ch.is_ascii_digit())
+    {
+        if !args.checksum_multi.is_empty() {
+            return Err(ParseArgError::InvalidOption(
+                "cannot combine /CS* with /CSM*".to_string(),
+            ));
+        }
+        args.checksum = Some(parse_checksum(algo, "@append", true)?);
+        return Ok(true);
+    }
+    if let Some(algo) = opt_upper.strip_prefix("CS")
+        && algo.chars().all(|ch| ch.is_ascii_digit())
+    {
+        if !args.checksum_multi.is_empty() {
+            return Err(ParseArgError::InvalidOption(
+                "cannot combine /CS* with /CSM*".to_string(),
+            ));
+        }
+        args.checksum = Some(parse_checksum(algo, "@append", false)?);
         return Ok(true);
     }
     Ok(false)
@@ -448,6 +525,9 @@ pub(super) fn parse_option(args: &mut Args, opt: &str) -> Result<(), ParseArgErr
     let opt_upper = opt.to_ascii_uppercase();
 
     if parse_simple_flag(args, &opt_upper) {
+        return Ok(());
+    }
+    if parse_bare_checksum_option(args, &opt_upper)? {
         return Ok(());
     }
 

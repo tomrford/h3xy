@@ -6,7 +6,7 @@ mod log;
 mod pipeline;
 mod transform;
 
-pub use checksum::{ChecksumAlgorithm, ChecksumOptions, ChecksumTarget, ForcedRange};
+pub use checksum::{ChecksumAlgorithm, ChecksumJob, ChecksumOptions, ChecksumTarget, ForcedRange};
 pub use error::OpsError;
 pub use filter::{FillOptions, MergeMode, MergeOptions};
 pub use flags::{

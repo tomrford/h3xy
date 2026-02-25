@@ -263,7 +263,9 @@ pub(super) fn parse_checksum(
         }
     }
 
-    let target = if let Some(stripped) = target_str.strip_prefix('@') {
+    let target = if target_str.is_empty() {
+        ChecksumTarget::Append
+    } else if let Some(stripped) = target_str.strip_prefix('@') {
         parse_placement_target(stripped)?
     } else {
         ChecksumTarget::File(PathBuf::from(target_str))
@@ -525,6 +527,12 @@ mod tests {
     fn test_parse_checksum_forced_invalid_pattern() {
         let result = parse_checksum("0", "@append;!0x1000-0x1001#F", false);
         assert!(result.is_err());
+    }
+    #[test]
+    fn test_parse_checksum_empty_target_defaults_append() {
+        let params = parse_checksum("0", ";0x1000-0x1003", false).unwrap();
+        assert!(matches!(params.target, ChecksumTarget::Append));
+        assert_eq!(params.range.unwrap().start(), 0x1000);
     }
 
     #[test]

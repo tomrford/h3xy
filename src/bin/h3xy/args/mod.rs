@@ -16,7 +16,7 @@
 //! 13. Align (/AD, /AL)
 //! 14. Split blocks (/SB)
 //! 15. Swap bytes (/SWAPWORD, /SWAPLONG)
-//! 16. Checksum (/CS)
+//! 16. Checksum (/CS, /CSM)
 //! 17. Data processing signature subset (/DP32/33/38/39/46/47/48/49)
 //! 18. Signature verification subset (/SV4..11)
 //! 19. Export (/Xx)

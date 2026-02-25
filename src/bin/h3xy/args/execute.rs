@@ -10,7 +10,7 @@ use super::signature::{
     apply_data_processing, apply_signature_verification, is_supported_data_processing_method,
     is_supported_signature_verify_method,
 };
-use super::types::{Args, ChecksumTarget, ParseArgError};
+use super::types::{Args, ChecksumParams, ChecksumTarget, ParseArgError};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -83,6 +83,11 @@ impl Args {
                 "explicit import (/IN, /II2) cannot be combined with input file".into(),
             ));
         }
+        if self.checksum.is_some() && !self.checksum_multi.is_empty() {
+            return Err(CliError::Unsupported(
+                "cannot combine /CS* with /CSM* in one command".into(),
+            ));
+        }
         Ok(())
     }
 
@@ -107,7 +112,7 @@ impl Args {
                 PipelineError::Log(err) => CliError::Other(format!("/L: {err}")),
         })?;
         let mut hexfile = result.hexfile;
-        let checksum_bytes = self.apply_checksum(&mut hexfile)?;
+        let checksum_bytes = self.apply_checksums(&mut hexfile)?;
         let _signature_bytes = self.apply_data_processing(&mut hexfile)?;
         self.apply_signature_verification(&hexfile)?;
         self.write_outputs(&hexfile, provider)?;
@@ -131,7 +136,7 @@ impl Args {
                 PipelineError::Log(err) => CliError::Other(format!("/L: {err}")),
         })?;
         let mut hexfile = result.hexfile;
-        let checksum_bytes = self.apply_checksum(&mut hexfile)?;
+        let checksum_bytes = self.apply_checksums(&mut hexfile)?;
         let _signature_bytes = self.apply_data_processing(&mut hexfile)?;
         self.apply_signature_verification(&hexfile)?;
         self.write_outputs(&hexfile, &provider)?;
@@ -400,11 +405,30 @@ impl Args {
         Err(ParseArgError::MissingInputFile.into())
     }
 
-    fn apply_checksum(&self, hexfile: &mut crate::HexFile) -> Result<Option<Vec<u8>>, CliError> {
-        let Some(ref cs_params) = self.checksum else {
-            return Ok(None);
-        };
-        let opt_base = if cs_params.little_endian {
+    fn apply_checksums(&self, hexfile: &mut crate::HexFile) -> Result<Option<Vec<u8>>, CliError> {
+        let mut legacy_bytes = None;
+        if let Some(cs_params) = self.checksum.as_ref() {
+            legacy_bytes = Some(self.run_checksum(hexfile, cs_params, false)?);
+        }
+        for cs_params in &self.checksum_multi {
+            self.run_checksum(hexfile, cs_params, true)?;
+        }
+        Ok(legacy_bytes)
+    }
+
+    fn run_checksum(
+        &self,
+        hexfile: &mut crate::HexFile,
+        cs_params: &ChecksumParams,
+        is_multi: bool,
+    ) -> Result<Vec<u8>, CliError> {
+        let opt_base = if is_multi {
+            if cs_params.little_endian {
+                "/CSMR"
+            } else {
+                "/CSM"
+            }
+        } else if cs_params.little_endian {
             "/CSR"
         } else {
             "/CS"
@@ -419,7 +443,33 @@ impl Args {
                 range: forced.range,
                 pattern: forced.pattern.clone(),
             });
-        let lib_target = match &cs_params.target {
+        let options = crate::ChecksumOptions {
+            algorithm,
+            range: cs_params.range,
+            little_endian_output: cs_params.little_endian,
+            forced_range,
+            exclude_ranges: cs_params.exclude_ranges.clone(),
+            target_exclude: None,
+        };
+        let target = self.resolve_checksum_target(hexfile, &cs_params.target);
+        let result = self.wrap_error(&opt, hexfile.checksum(&options, &target))?;
+        if let ChecksumTarget::File(path) = &cs_params.target {
+            let formatted = result
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(",");
+            self.wrap_error(&opt, std::fs::write(path, formatted))?;
+        }
+        Ok(result)
+    }
+
+    fn resolve_checksum_target(
+        &self,
+        hexfile: &crate::HexFile,
+        target: &ChecksumTarget,
+    ) -> crate::ChecksumTarget {
+        match target {
             ChecksumTarget::Address(addr) => crate::ChecksumTarget::Address(*addr),
             ChecksumTarget::Append => crate::ChecksumTarget::Append,
             ChecksumTarget::Begin => {
@@ -432,30 +482,7 @@ impl Args {
             ChecksumTarget::Prepend => crate::ChecksumTarget::Prepend,
             ChecksumTarget::OverwriteEnd => crate::ChecksumTarget::OverwriteEnd,
             ChecksumTarget::File(path) => crate::ChecksumTarget::File(path.clone()),
-        };
-        let result = self.wrap_error(
-            &opt,
-            crate::flag_checksum(
-                hexfile,
-                algorithm,
-                cs_params.range,
-                cs_params.little_endian,
-                forced_range,
-                &cs_params.exclude_ranges,
-                &lib_target,
-            ),
-        )?;
-
-        if let ChecksumTarget::File(ref path) = cs_params.target {
-            let formatted = result
-                .iter()
-                .map(|b| format!("{:02X}", b))
-                .collect::<Vec<_>>()
-                .join(",");
-            self.wrap_error(&opt, std::fs::write(path, formatted))?;
         }
-
-        Ok(Some(result))
     }
 
     fn apply_data_processing(&self, hexfile: &mut crate::HexFile) -> Result<Option<Vec<u8>>, CliError> {
