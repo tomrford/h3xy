@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::Range;
+use crate::AddressRange;
 
 use super::types::{
     ChecksumParams, ChecksumTarget, DataProcessingParams, DspicOp, ForcedRange, ImportParam,
@@ -21,7 +21,7 @@ pub(super) fn strip_quotes(s: &str) -> &str {
     s.trim_matches(|c| c == '"' || c == '\'')
 }
 
-pub(super) fn parse_hexview_ranges(s: &str) -> Result<Vec<Range>, ParseArgError> {
+pub(super) fn parse_hexview_ranges(s: &str) -> Result<Vec<AddressRange>, ParseArgError> {
     crate::parse_hexview_ranges(s).map_err(|e| ParseArgError::InvalidRange(e.to_string()))
 }
 
@@ -348,7 +348,9 @@ pub(super) fn parse_signature_verify_params(
         return Err(ParseArgError::MissingValue(format!("/SV{method} keyinfo")));
     }
     if signature_info.is_empty() {
-        return Err(ParseArgError::MissingValue(format!("/SV{method} signatureinfo")));
+        return Err(ParseArgError::MissingValue(format!(
+            "/SV{method} signatureinfo"
+        )));
     }
     Ok(SignatureVerifyParams {
         method,

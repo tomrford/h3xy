@@ -1,5 +1,5 @@
 use super::OpsError;
-use crate::{HexFile, Range, Segment};
+use crate::{AddressRange, HexFile, Segment};
 
 /// Mode for byte swapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,12 +162,10 @@ impl HexFile {
             }
             SwapMode::DWord => {
                 const HEXVIEW_SWAPLONG_LIMIT: usize = 0x1000000;
-                let Some(span_start) = self.segments().iter().map(|s| s.start_address).min()
-                else {
+                let Some(span_start) = self.segments().iter().map(|s| s.start_address).min() else {
                     return Ok(());
                 };
-                let Some(span_end) = self.segments().iter().map(|s| s.end_address()).max()
-                else {
+                let Some(span_end) = self.segments().iter().map(|s| s.end_address()).max() else {
                     return Ok(());
                 };
                 let span_len = span_end
@@ -182,9 +180,7 @@ impl HexFile {
 
                 if self.segments().len() == 1 {
                     let segment = &mut self.segments_mut()[0];
-                    if segment.start_address == span_start
-                        && segment.len() == span_len as usize
-                    {
+                    if segment.start_address == span_start && segment.len() == span_len as usize {
                         // HexView quirk: large single spans repeat the first swapped word.
                         if segment.len() >= HEXVIEW_SWAPLONG_LIMIT {
                             if segment.data.len() < 4 {
@@ -302,7 +298,11 @@ impl HexFile {
 
     /// Expand dsPIC-like data: 2 bytes -> 4 bytes (appends two zero bytes).
     /// Copies data to the target address (default: source_start * 2).
-    pub fn dspic_expand(&mut self, range: Range, target: Option<u32>) -> Result<(), OpsError> {
+    pub fn dspic_expand(
+        &mut self,
+        range: AddressRange,
+        target: Option<u32>,
+    ) -> Result<(), OpsError> {
         let length = range.length() as usize;
         if !length.is_multiple_of(2) {
             return Err(OpsError::LengthNotMultiple {
@@ -338,7 +338,11 @@ impl HexFile {
 
     /// Shrink dsPIC-like data: 4 bytes -> 2 bytes (keeps lower two bytes).
     /// Copies data to the target address (default: source_start / 2).
-    pub fn dspic_shrink(&mut self, range: Range, target: Option<u32>) -> Result<(), OpsError> {
+    pub fn dspic_shrink(
+        &mut self,
+        range: AddressRange,
+        target: Option<u32>,
+    ) -> Result<(), OpsError> {
         let length = range.length() as usize;
         if !length.is_multiple_of(4) {
             return Err(OpsError::LengthNotMultiple {
@@ -372,7 +376,7 @@ impl HexFile {
     }
 
     /// Clear dsPIC ghost bytes: set highest byte in each 4-byte group to 0.
-    pub fn dspic_clear_ghost(&mut self, range: Range) -> Result<(), OpsError> {
+    pub fn dspic_clear_ghost(&mut self, range: AddressRange) -> Result<(), OpsError> {
         let length = range.length() as usize;
         if !length.is_multiple_of(4) {
             return Err(OpsError::LengthNotMultiple {
@@ -928,7 +932,8 @@ mod tests {
 
     #[test]
     fn test_swap_dword_span_misaligned_noop() {
-        let mut hf = HexFile::with_segments(vec![Segment::new(0x1002, vec![0x01, 0x02, 0x03, 0x04])]);
+        let mut hf =
+            HexFile::with_segments(vec![Segment::new(0x1002, vec![0x01, 0x02, 0x03, 0x04])]);
         hf.swap_bytes(SwapMode::DWord).unwrap();
         assert_eq!(hf.segments()[0].data, vec![0x01, 0x02, 0x03, 0x04]);
     }
@@ -1129,7 +1134,7 @@ mod tests {
     fn test_dspic_expand_appends_zeros() {
         let mut hf =
             HexFile::with_segments(vec![Segment::new(0x1000, vec![0xAA, 0xBB, 0xCC, 0xDD])]);
-        hf.dspic_expand(Range::from_start_length(0x1000, 4).unwrap(), None)
+        hf.dspic_expand(AddressRange::from_start_length(0x1000, 4).unwrap(), None)
             .unwrap();
 
         let out = hf.read_bytes_contiguous(0x2000, 8).unwrap();
@@ -1142,7 +1147,7 @@ mod tests {
             0x2000,
             vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88],
         )]);
-        hf.dspic_shrink(Range::from_start_length(0x2000, 8).unwrap(), None)
+        hf.dspic_shrink(AddressRange::from_start_length(0x2000, 8).unwrap(), None)
             .unwrap();
 
         let out = hf.read_bytes_contiguous(0x1000, 4).unwrap();
@@ -1155,7 +1160,7 @@ mod tests {
             0x3000,
             vec![0x01, 0x02, 0x03, 0xFF, 0x10, 0x11, 0x12, 0xEE],
         )]);
-        hf.dspic_clear_ghost(Range::from_start_length(0x3000, 8).unwrap())
+        hf.dspic_clear_ghost(AddressRange::from_start_length(0x3000, 8).unwrap())
             .unwrap();
 
         let out = hf.read_bytes_contiguous(0x3000, 8).unwrap();

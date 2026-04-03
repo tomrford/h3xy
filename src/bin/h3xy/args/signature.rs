@@ -3,15 +3,20 @@ use std::path::Path;
 use ed25519_dalek::pkcs8::{
     DecodePrivateKey as EdDecodePrivateKey, DecodePublicKey as EdDecodePublicKey,
 };
-use ed25519_dalek::{Signature as EdSignature, SigningKey as EdSigningKey, VerifyingKey as EdVerifyingKey};
+use ed25519_dalek::{
+    Signature as EdSignature, SigningKey as EdSigningKey, VerifyingKey as EdVerifyingKey,
+};
 use rsa::pkcs1::{DecodeRsaPrivateKey, DecodeRsaPublicKey};
 use rsa::pkcs1v15::{
     Signature as RsaPkcs1v15Signature, SigningKey as RsaPkcs1v15SigningKey,
     VerifyingKey as RsaPkcs1v15VerifyingKey,
 };
-use rsa::pss::{Signature as RsaPssSignature, SigningKey as RsaPssSigningKey, VerifyingKey as RsaPssVerifyingKey};
-use rsa::{RsaPrivateKey, RsaPublicKey};
+use rsa::pss::{
+    Signature as RsaPssSignature, SigningKey as RsaPssSigningKey,
+    VerifyingKey as RsaPssVerifyingKey,
+};
 use rsa::signature::{SignatureEncoding, Signer, Verifier};
+use rsa::{RsaPrivateKey, RsaPublicKey};
 use sha2::{Digest, Sha256, Sha512};
 use x509_cert::Certificate;
 use x509_cert::der::{Decode, DecodePem, Encode};
@@ -213,9 +218,7 @@ fn place_signature(
             }
             Ok(())
         }
-        ChecksumTarget::File(_) => {
-            Err("file target is not valid for /DP placement".to_string())
-        }
+        ChecksumTarget::File(_) => Err("file target is not valid for /DP placement".to_string()),
     }
 }
 
@@ -248,7 +251,11 @@ fn parse_hex_signature(s: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-fn sign_payload(method: SignatureMethod, payload: &[u8], key_info: &str) -> Result<Vec<u8>, String> {
+fn sign_payload(
+    method: SignatureMethod,
+    payload: &[u8],
+    key_info: &str,
+) -> Result<Vec<u8>, String> {
     match method {
         SignatureMethod::RsaPkcs1v15Sha256 { .. } => {
             let key = load_rsa_private_key(key_info)?;
@@ -416,18 +423,10 @@ fn load_ed25519_public_key(key_info: &str) -> Result<EdVerifyingKey, String> {
 
 fn extract_spki_from_certificate(material: &[u8]) -> Option<Vec<u8>> {
     if let Ok(cert) = Certificate::from_pem(material) {
-        return cert
-            .tbs_certificate
-            .subject_public_key_info
-            .to_der()
-            .ok();
+        return cert.tbs_certificate.subject_public_key_info.to_der().ok();
     }
     if let Ok(cert) = Certificate::from_der(material) {
-        return cert
-            .tbs_certificate
-            .subject_public_key_info
-            .to_der()
-            .ok();
+        return cert.tbs_certificate.subject_public_key_info.to_der().ok();
     }
     None
 }

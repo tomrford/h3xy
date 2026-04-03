@@ -2,8 +2,9 @@ mod common;
 
 use common::{assert_success, run_h3xy, temp_dir, write_file};
 use h3xy::{
-    AlignOptions, BinaryWriteOptions, ChecksumAlgorithm, ChecksumTarget, IntelHexWriteOptions,
-    Pipeline, PipelineMerge, Range, parse_binary, write_binary, write_intel_hex,
+    AddressRange, AlignOptions, BinaryWriteOptions, ChecksumAlgorithm, ChecksumOptions,
+    ChecksumTarget, FillOptions, IntelHexWriteOptions, MergeMode, MergeOptions, SwapMode,
+    parse_binary, write_binary, write_intel_hex,
 };
 
 #[test]
@@ -37,33 +38,42 @@ fn test_cli_pipeline_parity_basic_chain() {
     assert_success(&output);
     let cli_bytes = std::fs::read(&out_cli).unwrap();
 
-    let base_hex = parse_binary(&[0x10, 0x11, 0x12, 0x13], 0x1000).unwrap();
+    let mut hexfile = parse_binary(&[0x10, 0x11, 0x12, 0x13], 0x1000).unwrap();
     let merge_hex = parse_binary(&[0xAA, 0xBB], 0).unwrap();
+    let fill_ranges = [AddressRange::from_start_end(0x1000, 0x100F).unwrap()];
+    let cut_ranges = [AddressRange::from_start_end(0x1004, 0x1005).unwrap()];
+    let filter_ranges = [AddressRange::from_start_end(0x1000, 0x1010).unwrap()];
 
-    let mut pipeline = Pipeline::default();
-    pipeline.hexfile = base_hex;
-    pipeline.fill_ranges = vec![Range::from_start_end(0x1000, 0x100F).unwrap()];
-    pipeline.fill_pattern = Some(vec![0xF0]);
-    pipeline.cut_ranges = vec![Range::from_start_end(0x1004, 0x1005).unwrap()];
-    pipeline.merge_transparent = vec![PipelineMerge {
-        other: merge_hex,
-        offset: 0x1008,
-        range: None,
-    }];
-    pipeline.address_ranges = vec![Range::from_start_end(0x1000, 0x1010).unwrap()];
-    pipeline.align = Some(AlignOptions {
-        alignment: 4,
-        fill_byte: 0x00,
-        align_length: true,
-    });
-    pipeline.split = Some(4);
-    pipeline.swap_word = true;
-
-    let result = pipeline
-        .execute_without_log(|range| vec![0; range.length() as usize])
+    hexfile.fill_ranges(
+        &fill_ranges,
+        &FillOptions {
+            pattern: vec![0xF0],
+            overwrite: false,
+        },
+    );
+    hexfile.cut_ranges(&cut_ranges);
+    hexfile
+        .merge(
+            &merge_hex,
+            &MergeOptions {
+                mode: MergeMode::Preserve,
+                offset: 0x1008,
+                range: None,
+            },
+        )
         .unwrap();
-    let lib_bytes = write_intel_hex(&result.hexfile, &IntelHexWriteOptions::default());
+    hexfile.filter_ranges(&filter_ranges);
+    hexfile
+        .align(&AlignOptions {
+            alignment: 4,
+            fill_byte: 0x00,
+            align_length: true,
+        })
+        .unwrap();
+    hexfile.split(4);
+    hexfile.swap_bytes(SwapMode::Word).unwrap();
 
+    let lib_bytes = write_intel_hex(&hexfile, &IntelHexWriteOptions::default());
     assert_eq!(cli_bytes, lib_bytes);
 }
 
@@ -89,22 +99,20 @@ fn test_cli_pipeline_parity_binary_order() {
     assert_success(&output);
     let cli_bytes = std::fs::read(&out_cli).unwrap();
 
-    let base_hex = parse_binary(&[0x01, 0x02], 0x2000).unwrap();
+    let mut hexfile = parse_binary(&[0x01, 0x02], 0x2000).unwrap();
     let merge_hex = parse_binary(&[0xAA, 0xBB], 0).unwrap();
-
-    let mut pipeline = Pipeline::default();
-    pipeline.hexfile = base_hex;
-    pipeline.merge_transparent = vec![PipelineMerge {
-        other: merge_hex,
-        offset: 0x1000,
-        range: None,
-    }];
-
-    let result = pipeline
-        .execute_without_log(|range| vec![0; range.length() as usize])
+    hexfile
+        .merge(
+            &merge_hex,
+            &MergeOptions {
+                mode: MergeMode::Preserve,
+                offset: 0x1000,
+                range: None,
+            },
+        )
         .unwrap();
-    let lib_bytes = write_binary(&result.hexfile, &BinaryWriteOptions::default());
 
+    let lib_bytes = write_binary(&hexfile, &BinaryWriteOptions::default());
     assert_eq!(cli_bytes, lib_bytes);
 }
 
@@ -131,16 +139,15 @@ fn test_cli_checksum_parity_begin() {
     let mut hexfile = parse_binary(&[0x01, 0x02, 0x03, 0x04], 0x1000).unwrap();
     let start = hexfile.min_address().unwrap();
     let algorithm = ChecksumAlgorithm::from_index(0).unwrap();
-    let _ = h3xy::flag_checksum(
-        &mut hexfile,
-        algorithm,
-        None,
-        false,
-        None,
-        &[],
-        &ChecksumTarget::Address(start),
-    )
-    .unwrap();
+    let _ = hexfile
+        .checksum(
+            &ChecksumOptions {
+                algorithm,
+                ..Default::default()
+            },
+            &ChecksumTarget::Address(start),
+        )
+        .unwrap();
     let lib_bytes = write_intel_hex(&hexfile, &IntelHexWriteOptions::default());
 
     assert_eq!(cli_bytes, lib_bytes);
@@ -169,16 +176,16 @@ fn test_cli_checksum_parity_little_endian_file() {
 
     let mut hexfile = parse_binary(&[0x10, 0x20, 0x30, 0x40], 0x2000).unwrap();
     let algorithm = ChecksumAlgorithm::from_index(0).unwrap();
-    let bytes = h3xy::flag_checksum(
-        &mut hexfile,
-        algorithm,
-        None,
-        true,
-        None,
-        &[],
-        &ChecksumTarget::File(out_sum.clone()),
-    )
-    .unwrap();
+    let bytes = hexfile
+        .checksum(
+            &ChecksumOptions {
+                algorithm,
+                little_endian_output: true,
+                ..Default::default()
+            },
+            &ChecksumTarget::File(out_sum.clone()),
+        )
+        .unwrap();
     let lib_sum = bytes
         .iter()
         .map(|b| format!("{:02X}", b))
@@ -211,21 +218,19 @@ fn test_cli_pipeline_parity_xsb_split() {
     let cli_a = std::fs::read(dir.join("out_1000.bin")).unwrap();
     let cli_b = std::fs::read(dir.join("out_2000.bin")).unwrap();
 
-    let base_hex = parse_binary(&[0x01, 0x02], 0x1000).unwrap();
+    let mut hexfile = parse_binary(&[0x01, 0x02], 0x1000).unwrap();
     let merge_hex = parse_binary(&[0xAA], 0).unwrap();
-
-    let mut pipeline = Pipeline::default();
-    pipeline.hexfile = base_hex;
-    pipeline.merge_opaque = vec![PipelineMerge {
-        other: merge_hex,
-        offset: 0x2000,
-        range: None,
-    }];
-
-    let result = pipeline
-        .execute_without_log(|range| vec![0; range.length() as usize])
+    hexfile
+        .merge(
+            &merge_hex,
+            &MergeOptions {
+                mode: MergeMode::Overwrite,
+                offset: 0x2000,
+                range: None,
+            },
+        )
         .unwrap();
-    let mut segments = result.hexfile.normalized_lossy().into_segments();
+    let mut segments = hexfile.normalized_lossy().into_segments();
     segments.sort_by_key(|s| s.start_address);
 
     assert_eq!(cli_a, segments[0].data);
@@ -253,15 +258,10 @@ fn test_cli_pipeline_parity_fa_fill_binary() {
     assert_success(&output);
     let cli_bytes = std::fs::read(&out_cli).unwrap();
 
-    let base_hex = parse_binary(&[0xAA], 0x1000).unwrap();
-    let mut pipeline = Pipeline::default();
-    pipeline.hexfile = base_hex;
-    pipeline.fill_all = Some(0x00);
-    let result = pipeline
-        .execute_without_log(|range| vec![0; range.length() as usize])
-        .unwrap();
+    let mut hexfile = parse_binary(&[0xAA], 0x1000).unwrap();
+    hexfile.fill_gaps(0x00);
     let lib_bytes = write_binary(
-        &result.hexfile,
+        &hexfile,
         &BinaryWriteOptions {
             fill_gaps: Some(0x00),
         },

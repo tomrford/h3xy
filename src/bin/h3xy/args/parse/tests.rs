@@ -55,10 +55,19 @@ fn test_parse_dp_signature_subset_option() {
 fn test_parse_sv_option() {
     let mut args = Args::default();
     parse_option(&mut args, "SV4:pub.pem!sig.bin").unwrap();
-    let sv = args.signature_verify.expect("signature verification parsed");
+    let sv = args
+        .signature_verify
+        .expect("signature verification parsed");
     assert_eq!(sv.method, 4);
     assert_eq!(sv.key_info, "pub.pem");
     assert_eq!(sv.signature_info, "sig.bin");
+}
+
+#[test]
+fn test_parse_unsupported_output_option_rejected() {
+    let mut args = Args::default();
+    let err = parse_option(&mut args, "XV").unwrap_err();
+    assert_eq!(err.to_string(), "invalid option: /XV not yet implemented");
 }
 
 #[test]

@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 use super::types::ParseArgError;
+use h3xy::ops::LogError;
 
 #[derive(Debug, Error)]
 pub enum CliError {
@@ -9,7 +10,7 @@ pub enum CliError {
     #[error(transparent)]
     Ops(#[from] crate::OpsError),
     #[error(transparent)]
-    Log(#[from] crate::LogError),
+    Log(#[from] LogError),
     #[error(transparent)]
     Parse(#[from] crate::ParseError),
     #[error(transparent)]

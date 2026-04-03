@@ -29,7 +29,7 @@ use ripemd::Ripemd160;
 use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha512};
 
-use crate::{HexFile, OpsError, Range, Segment};
+use crate::{AddressRange, HexFile, OpsError, Segment};
 
 /// Target for checksum output.
 #[derive(Debug, Clone)]
@@ -49,7 +49,7 @@ pub enum ChecksumTarget {
 /// Forced range for checksum calculation, with fill pattern.
 #[derive(Debug, Clone)]
 pub struct ForcedRange {
-    pub range: Range,
+    pub range: AddressRange,
     pub pattern: Vec<u8>,
 }
 
@@ -136,13 +136,13 @@ impl ChecksumAlgorithm {
 #[derive(Debug, Clone)]
 pub struct ChecksumOptions {
     pub algorithm: ChecksumAlgorithm,
-    pub range: Option<Range>,
+    pub range: Option<AddressRange>,
     pub little_endian_output: bool,
     pub forced_range: Option<ForcedRange>,
-    pub exclude_ranges: Vec<Range>,
+    pub exclude_ranges: Vec<AddressRange>,
     /// When set, this address range is excluded from the checksum calculation.
     /// Used internally when the checksum target is an address within the data.
-    pub target_exclude: Option<Range>,
+    pub target_exclude: Option<AddressRange>,
 }
 
 /// One checksum operation in a sequential checksum chain.
@@ -307,7 +307,7 @@ impl HexFile {
         let size = options.algorithm.result_size() as u32;
         match target {
             ChecksumTarget::Address(addr) => {
-                if let Ok(target_range) = Range::from_start_length(*addr, size) {
+                if let Ok(target_range) = AddressRange::from_start_length(*addr, size) {
                     effective_options.target_exclude = Some(target_range);
                 }
             }
@@ -316,7 +316,7 @@ impl HexFile {
                 if let Some(end) = self.max_address() {
                     let offset = size.saturating_sub(1);
                     if let Some(write_addr) = end.checked_sub(offset)
-                        && let Ok(target_range) = Range::from_start_length(write_addr, size)
+                        && let Ok(target_range) = AddressRange::from_start_length(write_addr, size)
                     {
                         effective_options.target_exclude = Some(target_range);
                     }
@@ -590,7 +590,7 @@ impl HexFile {
     fn resolve_effective_checksum_range(
         &self,
         options: &ChecksumOptions,
-    ) -> Result<Option<Range>, OpsError> {
+    ) -> Result<Option<AddressRange>, OpsError> {
         if let Some(range) = options.range {
             return Ok(Some(range));
         }
@@ -598,15 +598,15 @@ impl HexFile {
             return Ok(Some(forced.range));
         }
         if let (Some(min), Some(max)) = (self.min_address(), self.max_address()) {
-            return Ok(Some(Range::from_start_end(min, max).map_err(|e| {
-                OpsError::AddressOverflow(format!("checksum range invalid: {e}"))
-            })?));
+            return Ok(Some(AddressRange::from_start_end(min, max).map_err(
+                |e| OpsError::AddressOverflow(format!("checksum range invalid: {e}")),
+            )?));
         }
         Ok(None)
     }
 }
 
-fn build_pattern_data(range: Range, pattern: &[u8]) -> Result<Vec<u8>, OpsError> {
+fn build_pattern_data(range: AddressRange, pattern: &[u8]) -> Result<Vec<u8>, OpsError> {
     let len = usize::try_from(range.length()).map_err(|_| {
         OpsError::AddressOverflow(format!(
             "forced range length exceeds usize (start={:#X}, end={:#X})",
@@ -625,9 +625,9 @@ fn build_pattern_data(range: Range, pattern: &[u8]) -> Result<Vec<u8>, OpsError>
     Ok(data)
 }
 
-fn merge_ranges(mut ranges: Vec<Range>) -> Vec<Range> {
+fn merge_ranges(mut ranges: Vec<AddressRange>) -> Vec<AddressRange> {
     ranges.sort_by_key(|r| r.start());
-    let mut merged: Vec<Range> = Vec::new();
+    let mut merged: Vec<AddressRange> = Vec::new();
     for r in ranges {
         if let Some(last) = merged.last_mut() {
             let last_end = last.end();
@@ -637,7 +637,7 @@ fn merge_ranges(mut ranges: Vec<Range>) -> Vec<Range> {
                 .unwrap_or(false);
             if r.start() <= last_end || extend {
                 let end = last_end.max(r.end());
-                *last = Range::from_start_end(last.start(), end).expect("range merge");
+                *last = AddressRange::from_start_end(last.start(), end).expect("range merge");
                 continue;
             }
         }
@@ -646,11 +646,11 @@ fn merge_ranges(mut ranges: Vec<Range>) -> Vec<Range> {
     merged
 }
 
-fn subtract_ranges(range: Range, excludes: &[Range]) -> Vec<Range> {
+fn subtract_ranges(range: AddressRange, excludes: &[AddressRange]) -> Vec<AddressRange> {
     if excludes.is_empty() {
         return vec![range];
     }
-    let mut out: Vec<Range> = Vec::new();
+    let mut out: Vec<AddressRange> = Vec::new();
     let mut cursor = range.start();
     for ex in excludes {
         if ex.end() < cursor {
@@ -662,7 +662,7 @@ fn subtract_ranges(range: Range, excludes: &[Range]) -> Vec<Range> {
         let ex_start = ex.start().max(range.start());
         let ex_end = ex.end().min(range.end());
         if cursor < ex_start
-            && let Ok(r) = Range::from_start_end(cursor, ex_start - 1)
+            && let Ok(r) = AddressRange::from_start_end(cursor, ex_start - 1)
         {
             out.push(r);
         }
@@ -675,7 +675,7 @@ fn subtract_ranges(range: Range, excludes: &[Range]) -> Vec<Range> {
         }
     }
     if cursor <= range.end()
-        && let Ok(r) = Range::from_start_end(cursor, range.end())
+        && let Ok(r) = AddressRange::from_start_end(cursor, range.end())
     {
         out.push(r);
     }
@@ -910,7 +910,7 @@ mod tests {
         let hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01, 0x02, 0x03, 0x04])]);
         let options = ChecksumOptions {
             algorithm: ChecksumAlgorithm::ByteSumBe,
-            range: Some(Range::from_start_end(0x1001, 0x1002).unwrap()),
+            range: Some(AddressRange::from_start_end(0x1001, 0x1002).unwrap()),
             little_endian_output: false,
             ..Default::default()
         };
@@ -1158,12 +1158,12 @@ mod tests {
         let hf = HexFile::with_segments(vec![Segment::new(0x1000, b"0123456789".to_vec())]);
         let options = ChecksumOptions {
             algorithm: ChecksumAlgorithm::Crc16,
-            range: Some(Range::from_start_end(0x1001, 0x1009).unwrap()),
+            range: Some(AddressRange::from_start_end(0x1001, 0x1009).unwrap()),
             little_endian_output: false,
             ..Default::default()
         };
         let result = hf.calculate_checksum(&options).unwrap();
-        // Range extracts "123456789"
+        // AddressRange extracts "123456789"
         assert_eq!(result, vec![0xBB, 0x3D]);
     }
 
@@ -1175,7 +1175,7 @@ mod tests {
             range: None,
             little_endian_output: false,
             forced_range: Some(ForcedRange {
-                range: Range::from_start_end(0x1000, 0x1003).unwrap(),
+                range: AddressRange::from_start_end(0x1000, 0x1003).unwrap(),
                 pattern: vec![0xFF],
             }),
             exclude_ranges: Vec::new(),
@@ -1191,10 +1191,10 @@ mod tests {
         let hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01, 0x02, 0x03, 0x04])]);
         let options = ChecksumOptions {
             algorithm: ChecksumAlgorithm::ByteSumBe,
-            range: Some(Range::from_start_end(0x1000, 0x1003).unwrap()),
+            range: Some(AddressRange::from_start_end(0x1000, 0x1003).unwrap()),
             little_endian_output: false,
             forced_range: None,
-            exclude_ranges: vec![Range::from_start_end(0x1001, 0x1002).unwrap()],
+            exclude_ranges: vec![AddressRange::from_start_end(0x1001, 0x1002).unwrap()],
             target_exclude: None,
         };
         let result = hf.calculate_checksum(&options).unwrap();

@@ -1,18 +1,19 @@
 use crate::{
-    AlignOptions, ChecksumAlgorithm, Pipeline, PipelineDspic, PipelineError, PipelineMerge, Range,
-    RemapOptions,
+    AlignOptions, ChecksumAlgorithm, FillOptions, MergeMode, MergeOptions, RemapOptions, Segment,
+    SwapMode, execute_log_commands, parse_log_commands,
 };
 
 use super::error::{CliError, ExecuteOutput};
-use super::io::{FsProvider, ReadProvider, write_output_for_args};
-use super::io::{load_binary_input, load_hex_ascii_input, load_input, load_intel_hex_16bit_input};
+use super::io::{
+    FsProvider, ReadProvider, load_binary_input, load_hex_ascii_input, load_input,
+    load_intel_hex_16bit_input, write_output_for_args,
+};
 use super::signature::{
     apply_data_processing, apply_signature_verification, is_supported_data_processing_method,
     is_supported_signature_verify_method,
 };
-use super::types::{Args, ChecksumParams, ChecksumTarget, ParseArgError};
-use std::collections::HashMap;
-use std::path::Path;
+use super::types::{Args, ChecksumParams, ChecksumTarget, OutputFormat, ParseArgError};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 impl Args {
     fn wrap_error<T, E: std::fmt::Display>(
@@ -88,6 +89,13 @@ impl Args {
                 "cannot combine /CS* with /CSM* in one command".into(),
             ));
         }
+        if let Some(message) = self
+            .output_format
+            .as_ref()
+            .and_then(unsupported_output_format_message)
+        {
+            return Err(CliError::Unsupported(message));
+        }
         Ok(())
     }
 
@@ -103,15 +111,9 @@ impl Args {
     ) -> Result<ExecuteOutput, CliError> {
         self.validate_supported_features()?;
 
-        let hexfile = self.load_hexfile(provider)?;
-        let pipeline = self.build_pipeline(hexfile, provider)?;
-        let result = pipeline
-            .execute(random_fill_bytes, |path| load_input(provider, path))
-            .map_err(|e| match e {
-                PipelineError::Ops(err) => CliError::Other(err.to_string()),
-                PipelineError::Log(err) => CliError::Other(format!("/L: {err}")),
-        })?;
-        let mut hexfile = result.hexfile;
+        let mut hexfile = self.load_hexfile(provider)?;
+        self.execute_operations(&mut hexfile, provider)?;
+
         let checksum_bytes = self.apply_checksums(&mut hexfile)?;
         let _signature_bytes = self.apply_data_processing(&mut hexfile)?;
         self.apply_signature_verification(&hexfile)?;
@@ -120,219 +122,116 @@ impl Args {
         Ok(ExecuteOutput { checksum_bytes })
     }
 
-    pub(super) fn execute_with_blocks(
+    fn execute_operations<P: ReadProvider>(
         &self,
-        blocks: &HashMap<String, crate::HexFile>,
-    ) -> Result<ExecuteOutput, CliError> {
-        self.validate_supported_features()?;
-
-        let provider = FsProvider;
-        let hexfile = self.load_hexfile_from_blocks(blocks, &provider)?;
-        let pipeline = self.build_pipeline_from_blocks(hexfile, &provider, blocks)?;
-        let result = pipeline
-            .execute(random_fill_bytes, |path| load_block(blocks, path))
-            .map_err(|e| match e {
-                PipelineError::Ops(err) => CliError::Other(err.to_string()),
-                PipelineError::Log(err) => CliError::Other(format!("/L: {err}")),
-        })?;
-        let mut hexfile = result.hexfile;
-        let checksum_bytes = self.apply_checksums(&mut hexfile)?;
-        let _signature_bytes = self.apply_data_processing(&mut hexfile)?;
-        self.apply_signature_verification(&hexfile)?;
-        self.write_outputs(&hexfile, &provider)?;
-
-        Ok(ExecuteOutput { checksum_bytes })
-    }
-
-    fn build_pipeline<P: ReadProvider>(
-        &self,
-        hexfile: crate::HexFile,
+        hexfile: &mut crate::HexFile,
         provider: &P,
-    ) -> Result<Pipeline, CliError> {
-        let log_commands = if let Some(ref path) = self.log_file {
-            let content = provider
-                .read_string(path)
-                .map_err(|e| CliError::Other(format!("/L: {e}")))?;
-            Some(
-                crate::parse_log_commands(&content)
-                    .map_err(|e| CliError::Other(format!("/L: {e}")))?,
-            )
-        } else {
-            None
-        };
-
-        let mut merge_transparent = Vec::with_capacity(self.merge_transparent.len());
-        for merge in &self.merge_transparent {
-            let other = load_input(provider, &merge.file)?;
-            merge_transparent.push(PipelineMerge {
-                other,
-                offset: merge.offset.unwrap_or(0),
-                range: merge.range,
-            });
+    ) -> Result<(), CliError> {
+        if self.s12_map {
+            self.wrap_error("/S12MAP", hexfile.map_star12())?;
         }
-        let mut merge_opaque = Vec::with_capacity(self.merge_opaque.len());
-        for merge in &self.merge_opaque {
-            let other = load_input(provider, &merge.file)?;
-            merge_opaque.push(PipelineMerge {
-                other,
-                offset: merge.offset.unwrap_or(0),
-                range: merge.range,
-            });
+        if self.s12x_map {
+            self.wrap_error("/S12XMAP", hexfile.map_star12x())?;
         }
-
-        let align = self.align_address.map(|alignment| AlignOptions {
-            alignment,
-            fill_byte: self.align_fill,
-            align_length: self.align_length,
-        });
-
-        Ok(Pipeline {
-            hexfile,
-            fill_ranges: self.fill_ranges.clone(),
-            fill_pattern: if self.fill_pattern_set {
-                Some(self.fill_pattern.clone())
-            } else {
-                None
-            },
-            cut_ranges: self.cut_ranges.clone(),
-            merge_transparent,
-            merge_opaque,
-            address_ranges: self.address_range.clone(),
-            log_commands,
-            fill_all: if self.fill_all {
-                Some(self.align_fill)
-            } else {
-                None
-            },
-            align,
-            split: self.split_block_size,
-            swap_word: self.swap_word,
-            swap_long: self.swap_long,
-            checksum: None,
-            map_star12: self.s12_map,
-            map_star12x: self.s12x_map,
-            map_star08: self.s08_map,
-            remap: self.remap.as_ref().map(|remap| RemapOptions {
+        if self.s08_map {
+            self.wrap_error("/S08MAP", hexfile.map_star08())?;
+        }
+        if let Some(ref remap) = self.remap {
+            let options = RemapOptions {
                 start: remap.start,
                 end: remap.end,
                 linear: remap.linear,
                 size: remap.size,
                 inc: remap.inc,
-            }),
-            dspic_expand: self
-                .dspic_expand
-                .iter()
-                .map(|op| PipelineDspic {
-                    range: op.range,
-                    target: op.target,
-                })
-                .collect(),
-            dspic_shrink: self
-                .dspic_shrink
-                .iter()
-                .map(|op| PipelineDspic {
-                    range: op.range,
-                    target: op.target,
-                })
-                .collect(),
-            dspic_clear_ghost: self.dspic_clear_ghost.clone(),
-        })
-    }
+            };
+            self.wrap_error("/REMAP", hexfile.remap(&options))?;
+        }
 
-    fn build_pipeline_from_blocks<P: ReadProvider>(
-        &self,
-        hexfile: crate::HexFile,
-        provider: &P,
-        blocks: &HashMap<String, crate::HexFile>,
-    ) -> Result<Pipeline, CliError> {
-        let log_commands = if let Some(ref path) = self.log_file {
+        for op in &self.dspic_expand {
+            self.wrap_error("/CDSPX", hexfile.dspic_expand(op.range, op.target))?;
+        }
+        for op in &self.dspic_shrink {
+            self.wrap_error("/CDSPS", hexfile.dspic_shrink(op.range, op.target))?;
+        }
+        for range in &self.dspic_clear_ghost {
+            self.wrap_error("/CDSPG", hexfile.dspic_clear_ghost(*range))?;
+        }
+
+        if self.fill_pattern_set {
+            let options = FillOptions {
+                pattern: self.fill_pattern.clone(),
+                overwrite: false,
+            };
+            hexfile.fill_ranges(&self.fill_ranges, &options);
+        } else {
+            for range in &self.fill_ranges {
+                let data = random_fill_bytes(*range);
+                hexfile.prepend_segment(Segment::new(range.start(), data));
+            }
+        }
+
+        hexfile.cut_ranges(&self.cut_ranges);
+
+        for merge in &self.merge_transparent {
+            let other = load_input(provider, &merge.file)?;
+            let options = MergeOptions {
+                mode: MergeMode::Preserve,
+                offset: merge.offset.unwrap_or(0),
+                range: merge.range,
+            };
+            self.wrap_error("/MT", hexfile.merge(&other, &options))?;
+        }
+        for merge in &self.merge_opaque {
+            let other = load_input(provider, &merge.file)?;
+            let options = MergeOptions {
+                mode: MergeMode::Overwrite,
+                offset: merge.offset.unwrap_or(0),
+                range: merge.range,
+            };
+            self.wrap_error("/MO", hexfile.merge(&other, &options))?;
+        }
+
+        if !self.address_range.is_empty() {
+            hexfile.filter_ranges(&self.address_range);
+        }
+
+        if let Some(ref path) = self.log_file {
             let content = provider
                 .read_string(path)
                 .map_err(|e| CliError::Other(format!("/L: {e}")))?;
-            Some(
-                crate::parse_log_commands(&content)
-                    .map_err(|e| CliError::Other(format!("/L: {e}")))?,
-            )
-        } else {
-            None
-        };
-
-        let mut merge_transparent = Vec::with_capacity(self.merge_transparent.len());
-        for merge in &self.merge_transparent {
-            let other = load_block(blocks, &merge.file)?;
-            merge_transparent.push(PipelineMerge {
-                other,
-                offset: merge.offset.unwrap_or(0),
-                range: merge.range,
-            });
-        }
-        let mut merge_opaque = Vec::with_capacity(self.merge_opaque.len());
-        for merge in &self.merge_opaque {
-            let other = load_block(blocks, &merge.file)?;
-            merge_opaque.push(PipelineMerge {
-                other,
-                offset: merge.offset.unwrap_or(0),
-                range: merge.range,
-            });
+            let commands =
+                parse_log_commands(&content).map_err(|e| CliError::Other(format!("/L: {e}")))?;
+            execute_log_commands(hexfile, &commands, |log_path| {
+                load_input(provider, log_path)
+            })
+            .map_err(|e| CliError::Other(format!("/L: {e}")))?;
         }
 
-        let align = self.align_address.map(|alignment| AlignOptions {
-            alignment,
-            fill_byte: self.align_fill,
-            align_length: self.align_length,
-        });
+        if self.fill_all {
+            hexfile.fill_gaps(self.align_fill);
+        }
 
-        Ok(Pipeline {
-            hexfile,
-            fill_ranges: self.fill_ranges.clone(),
-            fill_pattern: if self.fill_pattern_set {
-                Some(self.fill_pattern.clone())
-            } else {
-                None
-            },
-            cut_ranges: self.cut_ranges.clone(),
-            merge_transparent,
-            merge_opaque,
-            address_ranges: self.address_range.clone(),
-            log_commands,
-            fill_all: if self.fill_all {
-                Some(self.align_fill)
-            } else {
-                None
-            },
-            align,
-            split: self.split_block_size,
-            swap_word: self.swap_word,
-            swap_long: self.swap_long,
-            checksum: None,
-            map_star12: self.s12_map,
-            map_star12x: self.s12x_map,
-            map_star08: self.s08_map,
-            remap: self.remap.as_ref().map(|remap| RemapOptions {
-                start: remap.start,
-                end: remap.end,
-                linear: remap.linear,
-                size: remap.size,
-                inc: remap.inc,
-            }),
-            dspic_expand: self
-                .dspic_expand
-                .iter()
-                .map(|op| PipelineDspic {
-                    range: op.range,
-                    target: op.target,
-                })
-                .collect(),
-            dspic_shrink: self
-                .dspic_shrink
-                .iter()
-                .map(|op| PipelineDspic {
-                    range: op.range,
-                    target: op.target,
-                })
-                .collect(),
-            dspic_clear_ghost: self.dspic_clear_ghost.clone(),
-        })
+        if let Some(alignment) = self.align_address {
+            let options = AlignOptions {
+                alignment,
+                fill_byte: self.align_fill,
+                align_length: self.align_length,
+            };
+            self.wrap_error("/AD/AL", hexfile.align(&options))?;
+        }
+
+        if let Some(size) = self.split_block_size {
+            hexfile.split(size);
+        }
+
+        if self.swap_word {
+            self.wrap_error("/SWAPWORD", hexfile.swap_bytes(SwapMode::Word))?;
+        }
+        if self.swap_long {
+            self.wrap_error("/SWAPLONG", hexfile.swap_bytes(SwapMode::DWord))?;
+        }
+
+        Ok(())
     }
 
     fn load_hexfile<P: ReadProvider>(&self, provider: &P) -> Result<crate::HexFile, CliError> {
@@ -361,43 +260,6 @@ impl Args {
         }
         if let Some(ref path) = self.input_file {
             return load_input(provider, path);
-        }
-        if self.log_file.is_some() {
-            return Ok(crate::HexFile::new());
-        }
-        Err(ParseArgError::MissingInputFile.into())
-    }
-
-    fn load_hexfile_from_blocks(
-        &self,
-        blocks: &HashMap<String, crate::HexFile>,
-        provider: &impl ReadProvider,
-    ) -> Result<crate::HexFile, CliError> {
-        if let Some(ref import) = self.import_binary {
-            return load_binary_input(provider, &import.file, import.offset);
-        }
-        if let Some(ref import) = self.import_hex_ascii {
-            let ascii = load_hex_ascii_input(provider, &import.file, import.offset)?;
-            if let Some(ref path) = self.input_file {
-                let mut base = load_block(blocks, path)?;
-                if super::io::hexfiles_overlap(&base, &ascii) {
-                    if !self.silent {
-                        eprintln!("Warning: /IA overlaps input file; ignoring input file");
-                    }
-                    return Ok(ascii);
-                }
-                for segment in ascii.segments() {
-                    base.append_segment(segment.clone());
-                }
-                return Ok(base);
-            }
-            return Ok(ascii);
-        }
-        if let Some(ref import) = self.import_i16 {
-            return load_intel_hex_16bit_input(provider, import);
-        }
-        if let Some(ref path) = self.input_file {
-            return load_block(blocks, path);
         }
         if self.log_file.is_some() {
             return Ok(crate::HexFile::new());
@@ -485,7 +347,10 @@ impl Args {
         }
     }
 
-    fn apply_data_processing(&self, hexfile: &mut crate::HexFile) -> Result<Option<Vec<u8>>, CliError> {
+    fn apply_data_processing(
+        &self,
+        hexfile: &mut crate::HexFile,
+    ) -> Result<Option<Vec<u8>>, CliError> {
         let Some(ref params) = self.data_processing else {
             return Ok(None);
         };
@@ -508,20 +373,53 @@ impl Args {
     }
 }
 
-fn random_fill_bytes(range: Range) -> Vec<u8> {
-    let seed = crate::random_fill_seed_from_time(range);
-    crate::random_fill_bytes(range, seed)
+fn unsupported_output_format_message(format: &OutputFormat) -> Option<String> {
+    let detail = |addr: Option<u32>| match addr {
+        Some(addr) => format!(":{addr:#X}"),
+        None => String::new(),
+    };
+
+    match format {
+        OutputFormat::GmHeader { addr } => {
+            Some(format!("output format /XG{} is not supported yet", detail(*addr)))
+        }
+        OutputFormat::GmHeaderOs { addr } => Some(format!(
+            "output format /XGC{} is not supported yet",
+            detail(*addr)
+        )),
+        OutputFormat::GmHeaderCal { addr } => Some(format!(
+            "output format /XGCC{} is not supported yet",
+            detail(*addr)
+        )),
+        OutputFormat::Gac => Some("output format /XGAC is not supported yet".into()),
+        OutputFormat::GacSwil => Some("output format /XGACSWIL is not supported yet".into()),
+        OutputFormat::FlashKernel => Some("output format /XK is not supported yet".into()),
+        OutputFormat::Vag => Some("output format /XV is not supported yet".into()),
+        OutputFormat::Vbf => Some("output format /XVBF is not supported yet".into()),
+        OutputFormat::FiatBin => Some("output format /XB is not supported yet".into()),
+        _ => None,
+    }
 }
 
-fn load_block(
-    blocks: &HashMap<String, crate::HexFile>,
-    path: &Path,
-) -> Result<crate::HexFile, CliError> {
-    let key = path.to_string_lossy().to_string();
-    if let Some(block) = blocks.get(&key) {
-        return Ok(block.clone());
+fn random_fill_bytes(range: crate::AddressRange) -> Vec<u8> {
+    let len = range.length() as usize;
+    if len == 0 {
+        return Vec::new();
     }
 
-    let provider = FsProvider;
-    load_input(&provider, path)
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    let mut state = {
+        let seed = now ^ ((range.start() as u64) << 32) ^ (range.length() as u64);
+        if seed == 0 { 0x9E3779B97F4A7C15 } else { seed }
+    };
+
+    let mut out = Vec::with_capacity(len);
+    for _ in 0..len {
+        state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+        out.push((state >> 32) as u8);
+    }
+    out
 }

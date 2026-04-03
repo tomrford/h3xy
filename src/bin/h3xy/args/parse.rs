@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::Range;
+use crate::AddressRange;
 
 use super::parse_util::{
     parse_checksum, parse_data_processing_params, parse_dspic_op, parse_hex_ascii_params,
@@ -11,7 +11,7 @@ use super::types::{Args, MergeParam, OutputFormat, ParseArgError};
 
 type ValueParser = fn(&mut Args, &str, &str) -> Result<bool, ParseArgError>;
 
-fn extend_ranges(target: &mut Vec<Range>, value: &str) -> Result<(), ParseArgError> {
+fn extend_ranges(target: &mut Vec<AddressRange>, value: &str) -> Result<(), ParseArgError> {
     let ranges = parse_hexview_ranges(value)?;
     target.extend(ranges);
     Ok(())
@@ -31,11 +31,8 @@ fn parse_hex_no_sep(raw: &str) -> Result<u32, ParseArgError> {
     u32::from_str_radix(stripped, 16).map_err(|_| ParseArgError::InvalidNumber(raw.to_string()))
 }
 
-fn parse_optional_addr(value: Option<&str>) -> Result<Option<u32>, ParseArgError> {
-    value
-        .filter(|v| !v.is_empty())
-        .map(parse_number)
-        .transpose()
+fn unsupported_output_format(key_upper: &str) -> ParseArgError {
+    ParseArgError::InvalidOption(format!("/{key_upper} not yet implemented"))
 }
 
 fn parse_simple_flag(args: &mut Args, opt_upper: &str) -> bool {
@@ -470,32 +467,8 @@ fn parse_output_option(
             set_output_format(args, OutputFormat::FordIntelHex)?;
             Ok(true)
         }
-        "XG" => {
-            let addr = parse_optional_addr(value)?;
-            set_output_format(args, OutputFormat::GmHeader { addr })?;
-            Ok(true)
-        }
-        "XGC" => {
-            let addr = parse_optional_addr(value)?;
-            set_output_format(args, OutputFormat::GmHeaderOs { addr })?;
-            Ok(true)
-        }
-        "XGCC" => {
-            let addr = parse_optional_addr(value)?;
-            set_output_format(args, OutputFormat::GmHeaderCal { addr })?;
-            Ok(true)
-        }
-        "XGAC" => {
-            set_output_format(args, OutputFormat::Gac)?;
-            Ok(true)
-        }
-        "XGACSWIL" => {
-            set_output_format(args, OutputFormat::GacSwil)?;
-            Ok(true)
-        }
-        "XK" => {
-            set_output_format(args, OutputFormat::FlashKernel)?;
-            Ok(true)
+        "XG" | "XGC" | "XGCC" | "XGAC" | "XGACSWIL" | "XK" => {
+            Err(unsupported_output_format(key_upper))
         }
         "XP" => {
             set_output_format(args, OutputFormat::Porsche)?;
@@ -505,18 +478,7 @@ fn parse_output_option(
             set_output_format(args, OutputFormat::SeparateBinary)?;
             Ok(true)
         }
-        "XV" => {
-            set_output_format(args, OutputFormat::Vag)?;
-            Ok(true)
-        }
-        "XVBF" => {
-            set_output_format(args, OutputFormat::Vbf)?;
-            Ok(true)
-        }
-        "XB" => {
-            set_output_format(args, OutputFormat::FiatBin)?;
-            Ok(true)
-        }
+        "XV" | "XVBF" | "XB" => Err(unsupported_output_format(key_upper)),
         _ => Ok(false),
     }
 }

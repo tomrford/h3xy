@@ -1,5 +1,5 @@
 use super::OpsError;
-use crate::{HexFile, Range, Segment};
+use crate::{AddressRange, HexFile, Segment};
 
 /// Options for fill operations.
 #[derive(Debug, Clone)]
@@ -36,7 +36,7 @@ pub struct MergeOptions {
     /// Address offset to apply (can be negative)
     pub offset: i64,
     /// Only merge data within this range (applied before offset)
-    pub range: Option<Range>,
+    pub range: Option<AddressRange>,
 }
 
 impl Default for MergeOptions {
@@ -51,12 +51,12 @@ impl Default for MergeOptions {
 
 impl HexFile {
     /// Keep only data within the specified range. Clips segments that partially overlap.
-    pub fn filter_range(&mut self, range: Range) {
+    pub fn filter_range(&mut self, range: AddressRange) {
         self.filter_ranges(&[range]);
     }
 
     /// Keep only data within any of the specified ranges.
-    pub fn filter_ranges(&mut self, ranges: &[Range]) {
+    pub fn filter_ranges(&mut self, ranges: &[AddressRange]) {
         if ranges.is_empty() {
             self.set_segments(Vec::new());
             return;
@@ -70,7 +70,7 @@ impl HexFile {
                 continue;
             }
             let seg_range =
-                match Range::from_start_end(segment.start_address, segment.end_address()) {
+                match AddressRange::from_start_end(segment.start_address, segment.end_address()) {
                     Ok(r) => r,
                     Err(_) => continue,
                 };
@@ -89,12 +89,12 @@ impl HexFile {
     }
 
     /// Remove all data within the specified range. Splits segments if cut is in the middle.
-    pub fn cut(&mut self, range: Range) {
+    pub fn cut(&mut self, range: AddressRange) {
         self.cut_ranges(&[range]);
     }
 
     /// Remove data within multiple ranges (operates on raw segments; preserves order).
-    pub fn cut_ranges(&mut self, ranges: &[Range]) {
+    pub fn cut_ranges(&mut self, ranges: &[AddressRange]) {
         for range in ranges {
             let mut new_segments = Vec::new();
 
@@ -132,14 +132,14 @@ impl HexFile {
 
     /// Fill a region with the specified pattern.
     /// By default (overwrite=false), only fills gaps - existing data is preserved.
-    pub fn fill(&mut self, range: Range, options: &FillOptions) {
+    pub fn fill(&mut self, range: AddressRange, options: &FillOptions) {
         self.fill_ranges(&[range], options);
     }
 
     /// Fill multiple regions with the specified pattern (operates on raw segments).
     /// By default, only fills gaps - existing data is preserved.
     /// When overwrite=true, removes existing data first then fills the entire range.
-    pub fn fill_ranges(&mut self, ranges: &[Range], options: &FillOptions) {
+    pub fn fill_ranges(&mut self, ranges: &[AddressRange], options: &FillOptions) {
         if options.pattern.is_empty() {
             return;
         }
@@ -163,7 +163,7 @@ impl HexFile {
     }
 
     /// Fill gaps within a specific range with a pattern. Does not touch existing data.
-    fn fill_gaps_in_range(&mut self, range: Range, pattern: &[u8]) {
+    fn fill_gaps_in_range(&mut self, range: AddressRange, pattern: &[u8]) {
         // Collect existing data segments that overlap with the range
         let mut occupied: Vec<(u32, u32)> = Vec::new();
         for segment in self.segments() {
@@ -324,17 +324,17 @@ impl HexFile {
     }
 }
 
-fn merge_ranges(ranges: &[Range]) -> Vec<Range> {
+fn merge_ranges(ranges: &[AddressRange]) -> Vec<AddressRange> {
     let mut sorted = ranges.to_vec();
     sorted.sort_by_key(|r| r.start());
 
-    let mut merged: Vec<Range> = Vec::new();
+    let mut merged: Vec<AddressRange> = Vec::new();
     for range in sorted {
         if let Some(last) = merged.last_mut()
             && range.start() <= last.end().saturating_add(1)
         {
             let new_end = last.end().max(range.end());
-            if let Ok(merged_range) = Range::from_start_end(last.start(), new_end) {
+            if let Ok(merged_range) = AddressRange::from_start_end(last.start(), new_end) {
                 *last = merged_range;
                 continue;
             }
@@ -354,7 +354,7 @@ mod tests {
             0x1000,
             vec![0x01, 0x02, 0x03, 0x04, 0x05],
         )]);
-        hf.filter_range(Range::from_start_end(0x1001, 0x1003).unwrap());
+        hf.filter_range(AddressRange::from_start_end(0x1001, 0x1003).unwrap());
 
         assert_eq!(hf.segments().len(), 1);
         assert_eq!(hf.segments()[0].start_address, 0x1001);
@@ -368,7 +368,7 @@ mod tests {
             Segment::new(0x2000, vec![0x03, 0x04]),
             Segment::new(0x3000, vec![0x05, 0x06]),
         ]);
-        hf.filter_range(Range::from_start_end(0x2000, 0x2FFF).unwrap());
+        hf.filter_range(AddressRange::from_start_end(0x2000, 0x2FFF).unwrap());
 
         assert_eq!(hf.segments().len(), 1);
         assert_eq!(hf.segments()[0].start_address, 0x2000);
@@ -378,8 +378,8 @@ mod tests {
     fn test_filter_multiple_ranges() {
         let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01; 0x100])]);
         hf.filter_ranges(&[
-            Range::from_start_end(0x1010, 0x101F).unwrap(),
-            Range::from_start_end(0x1080, 0x108F).unwrap(),
+            AddressRange::from_start_end(0x1010, 0x101F).unwrap(),
+            AddressRange::from_start_end(0x1080, 0x108F).unwrap(),
         ]);
 
         assert_eq!(hf.segments().len(), 2);
@@ -392,7 +392,7 @@ mod tests {
     #[test]
     fn test_cut_splits_segment() {
         let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01; 0x100])]);
-        hf.cut(Range::from_start_end(0x1040, 0x107F).unwrap());
+        hf.cut(AddressRange::from_start_end(0x1040, 0x107F).unwrap());
 
         let norm = hf.normalized().unwrap();
         assert_eq!(norm.segments().len(), 2);
@@ -408,7 +408,7 @@ mod tests {
             Segment::new(0x1000, vec![0x01; 0x10]),
             Segment::new(0x2000, vec![0x02; 0x10]),
         ]);
-        hf.cut(Range::from_start_end(0x1000, 0x100F).unwrap());
+        hf.cut(AddressRange::from_start_end(0x1000, 0x100F).unwrap());
 
         assert_eq!(hf.segments().len(), 1);
         assert_eq!(hf.segments()[0].start_address, 0x2000);
@@ -418,7 +418,7 @@ mod tests {
     fn test_fill_creates_segment() {
         let mut hf = HexFile::new();
         hf.fill(
-            Range::from_start_length(0x1000, 8).unwrap(),
+            AddressRange::from_start_length(0x1000, 8).unwrap(),
             &FillOptions::default(),
         );
 
@@ -431,7 +431,7 @@ mod tests {
     fn test_fill_with_pattern() {
         let mut hf = HexFile::new();
         hf.fill(
-            Range::from_start_length(0x1000, 8).unwrap(),
+            AddressRange::from_start_length(0x1000, 8).unwrap(),
             &FillOptions {
                 pattern: vec![0xDE, 0xAD, 0xBE, 0xEF],
                 overwrite: false,
@@ -539,7 +539,7 @@ mod tests {
             Segment::new(0x1000, vec![0x01, 0x02]),
             Segment::new(0x2000, vec![0x03, 0x04]),
         ]);
-        hf.filter_range(Range::from_start_end(0x5000, 0x5FFF).unwrap());
+        hf.filter_range(AddressRange::from_start_end(0x5000, 0x5FFF).unwrap());
         assert!(hf.segments().is_empty());
     }
 
@@ -554,8 +554,8 @@ mod tests {
     fn test_filter_ranges_overlapping() {
         let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01; 0x20])]);
         hf.filter_ranges(&[
-            Range::from_start_end(0x1005, 0x1015).unwrap(),
-            Range::from_start_end(0x1010, 0x101A).unwrap(), // overlaps
+            AddressRange::from_start_end(0x1005, 0x1015).unwrap(),
+            AddressRange::from_start_end(0x1010, 0x101A).unwrap(), // overlaps
         ]);
         let norm = hf.normalized().unwrap();
         // Should have data from 0x1005 to 0x101A (0x16 bytes)
@@ -567,7 +567,7 @@ mod tests {
     #[test]
     fn test_cut_head_only() {
         let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01; 0x10])]);
-        hf.cut(Range::from_start_end(0x1000, 0x1003).unwrap());
+        hf.cut(AddressRange::from_start_end(0x1000, 0x1003).unwrap());
         assert_eq!(hf.segments()[0].start_address, 0x1004);
         assert_eq!(hf.segments()[0].len(), 0x0C);
     }
@@ -575,7 +575,7 @@ mod tests {
     #[test]
     fn test_cut_tail_only() {
         let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01; 0x10])]);
-        hf.cut(Range::from_start_end(0x100C, 0x100F).unwrap());
+        hf.cut(AddressRange::from_start_end(0x100C, 0x100F).unwrap());
         assert_eq!(hf.segments()[0].start_address, 0x1000);
         assert_eq!(hf.segments()[0].len(), 0x0C);
     }
@@ -584,8 +584,8 @@ mod tests {
     fn test_cut_multiple_ranges_on_single_segment() {
         let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01; 0x20])]);
         hf.cut_ranges(&[
-            Range::from_start_end(0x1004, 0x1007).unwrap(),
-            Range::from_start_end(0x1010, 0x1013).unwrap(),
+            AddressRange::from_start_end(0x1004, 0x1007).unwrap(),
+            AddressRange::from_start_end(0x1010, 0x1013).unwrap(),
         ]);
         let norm = hf.normalized().unwrap();
         assert_eq!(norm.segments().len(), 3);
@@ -597,7 +597,7 @@ mod tests {
             Segment::new(0x1000, vec![0x01; 0x10]),
             Segment::new(0x1020, vec![0x02; 0x10]),
         ]);
-        hf.cut(Range::from_start_end(0x1008, 0x1027).unwrap());
+        hf.cut(AddressRange::from_start_end(0x1008, 0x1027).unwrap());
         let norm = hf.normalized().unwrap();
         assert_eq!(norm.segments().len(), 2);
         assert_eq!(norm.segments()[0].end_address(), 0x1007);
@@ -608,7 +608,7 @@ mod tests {
     fn test_fill_overwrite_partial() {
         let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0xAA; 8])]);
         hf.fill(
-            Range::from_start_length(0x1002, 4).unwrap(),
+            AddressRange::from_start_length(0x1002, 4).unwrap(),
             &FillOptions {
                 pattern: vec![0xFF],
                 overwrite: true,
@@ -671,7 +671,7 @@ mod tests {
         hf1.merge(
             &hf2,
             &MergeOptions {
-                range: Some(Range::from_start_end(0x2000, 0x2FFF).unwrap()),
+                range: Some(AddressRange::from_start_end(0x2000, 0x2FFF).unwrap()),
                 ..Default::default()
             },
         )
@@ -690,7 +690,7 @@ mod tests {
             &MergeOptions {
                 mode: MergeMode::Overwrite,
                 offset: 0x1000,
-                range: Some(Range::from_start_end(0x1000, 0x1001).unwrap()),
+                range: Some(AddressRange::from_start_end(0x1000, 0x1001).unwrap()),
             },
         )
         .unwrap();

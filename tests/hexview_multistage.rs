@@ -3,8 +3,8 @@
 //! Focus: multi-stage operations and command semantics.
 
 use h3xy::{
-    AlignOptions, ChecksumAlgorithm, ChecksumOptions, ChecksumTarget, FillOptions, HexFile,
-    MergeMode, MergeOptions, Range, Segment,
+    AddressRange, AlignOptions, ChecksumAlgorithm, ChecksumOptions, ChecksumTarget, FillOptions,
+    HexFile, MergeMode, MergeOptions, Segment,
 };
 
 #[test]
@@ -13,7 +13,7 @@ fn test_fill_region_preserves_existing_data() {
     let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0xAA; 8])]);
 
     hf.fill(
-        Range::from_start_end(0x1004, 0x100B).unwrap(),
+        AddressRange::from_start_end(0x1004, 0x100B).unwrap(),
         &FillOptions {
             pattern: vec![0x11, 0x22],
             overwrite: false,
@@ -42,7 +42,7 @@ fn test_merge_range_then_offset_transparent() {
         &MergeOptions {
             mode: MergeMode::Preserve,
             offset: 0x10,
-            range: Some(Range::from_start_end(0x1001, 0x1002).unwrap()),
+            range: Some(AddressRange::from_start_end(0x1001, 0x1002).unwrap()),
         },
     )
     .unwrap();
@@ -66,7 +66,7 @@ fn test_merge_range_then_offset_opaque() {
         &MergeOptions {
             mode: MergeMode::Overwrite,
             offset: 0x10,
-            range: Some(Range::from_start_end(0x1001, 0x1002).unwrap()),
+            range: Some(AddressRange::from_start_end(0x1001, 0x1002).unwrap()),
         },
     )
     .unwrap();
@@ -87,14 +87,14 @@ fn test_hexview_multistage_order() {
     )]);
 
     hf.fill(
-        Range::from_start_end(0x1003, 0x1007).unwrap(),
+        AddressRange::from_start_end(0x1003, 0x1007).unwrap(),
         &FillOptions {
             pattern: vec![0xAA, 0xBB],
             overwrite: false,
         },
     );
 
-    hf.cut(Range::from_start_end(0x1001, 0x1001).unwrap());
+    hf.cut(AddressRange::from_start_end(0x1001, 0x1001).unwrap());
 
     let merge = HexFile::with_segments(vec![Segment::new(0x2000, vec![0x20, 0x21, 0x22, 0x23])]);
     hf.merge(
@@ -102,12 +102,12 @@ fn test_hexview_multistage_order() {
         &MergeOptions {
             mode: MergeMode::Overwrite,
             offset: -0x1000,
-            range: Some(Range::from_start_end(0x2001, 0x2002).unwrap()),
+            range: Some(AddressRange::from_start_end(0x2001, 0x2002).unwrap()),
         },
     )
     .unwrap();
 
-    hf.filter_range(Range::from_start_end(0x1000, 0x1004).unwrap());
+    hf.filter_range(AddressRange::from_start_end(0x1000, 0x1004).unwrap());
 
     hf.align(&AlignOptions {
         alignment: 3,

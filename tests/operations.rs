@@ -2,7 +2,9 @@
 //!
 //! These tests verify that chaining multiple operations produces correct results.
 
-use h3xy::{AlignOptions, FillOptions, HexFile, MergeMode, MergeOptions, Range, Segment, SwapMode};
+use h3xy::{
+    AddressRange, AlignOptions, FillOptions, HexFile, MergeMode, MergeOptions, Segment, SwapMode,
+};
 
 // --- Cut → Fill → Normalize ---
 
@@ -15,11 +17,11 @@ fn test_cut_fill_normalize() {
     ]);
 
     // Cut a subrange from the first segment
-    hf.cut(Range::from_start_end(0x1008, 0x100F).unwrap());
+    hf.cut(AddressRange::from_start_end(0x1008, 0x100F).unwrap());
 
     // Fill the cut range with a pattern
     hf.fill(
-        Range::from_start_length(0x1008, 8).unwrap(),
+        AddressRange::from_start_length(0x1008, 8).unwrap(),
         &FillOptions {
             pattern: vec![0xCC],
             overwrite: false,
@@ -247,14 +249,14 @@ fn test_filter_cut_fill_align_split() {
     let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0xAA; 0x100])]);
 
     // Filter to keep only part
-    hf.filter_range(Range::from_start_end(0x1020, 0x10FF).unwrap());
+    hf.filter_range(AddressRange::from_start_end(0x1020, 0x10FF).unwrap());
 
     // Cut out a middle section
-    hf.cut(Range::from_start_end(0x1040, 0x105F).unwrap());
+    hf.cut(AddressRange::from_start_end(0x1040, 0x105F).unwrap());
 
     // Fill the cut section
     hf.fill(
-        Range::from_start_length(0x1040, 0x20).unwrap(),
+        AddressRange::from_start_length(0x1040, 0x20).unwrap(),
         &FillOptions {
             pattern: vec![0xBB],
             overwrite: false,
@@ -298,8 +300,8 @@ fn test_operations_on_empty_file() {
     let mut hf = HexFile::new();
 
     // None of these should panic (scale/offset on empty are no-ops)
-    hf.filter_range(Range::from_start_end(0x1000, 0x1FFF).unwrap());
-    hf.cut(Range::from_start_end(0x1000, 0x1FFF).unwrap());
+    hf.filter_range(AddressRange::from_start_end(0x1000, 0x1FFF).unwrap());
+    hf.cut(AddressRange::from_start_end(0x1000, 0x1FFF).unwrap());
     hf.fill_gaps(0xFF);
     hf.scale_addresses(2).unwrap();
     hf.offset_addresses(0x1000).unwrap();

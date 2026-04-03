@@ -278,9 +278,7 @@ fn truncate_segment_to_u32(segment: &Segment) -> Option<Segment> {
         .saturating_sub(segment.start_address as u64)
         .saturating_add(1);
     let data_len_u64 = segment.data.len() as u64;
-    let len_u64 = data_len_u64
-        .min(max_len_u64)
-        .min(usize::MAX as u64);
+    let len_u64 = data_len_u64.min(max_len_u64).min(usize::MAX as u64);
     if len_u64 == 0 {
         return None;
     }
@@ -347,10 +345,7 @@ fn overlay_segment(segments: Vec<Segment>, seg: Segment) -> Vec<Segment> {
             if let Some(right_start) = seg_end.checked_add(1) {
                 let right_offset = (right_start - cur.start_address) as usize;
                 if right_offset < cur.data.len() {
-                    next.push(Segment::new(
-                        right_start,
-                        cur.data[right_offset..].to_vec(),
-                    ));
+                    next.push(Segment::new(right_start, cur.data[right_offset..].to_vec()));
                 }
             }
         }

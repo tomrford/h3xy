@@ -51,7 +51,11 @@ pub fn write_binary(hexfile: &HexFile, options: &BinaryWriteOptions) -> Vec<u8> 
         return Vec::new();
     }
 
-    let mut segments: Vec<_> = hexfile.segments().iter().filter(|s| !s.is_empty()).collect();
+    let mut segments: Vec<_> = hexfile
+        .segments()
+        .iter()
+        .filter(|s| !s.is_empty())
+        .collect();
     segments.sort_by_key(|s| s.start_address);
     let total_len: usize = segments.iter().map(|s| s.len()).sum();
     let mut out = Vec::with_capacity(total_len);

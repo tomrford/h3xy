@@ -1,10 +1,10 @@
 mod common;
 
 use common::{assert_success, run_h3xy, temp_dir, write_file};
+use ed25519_dalek::SigningKey as EdSigningKey;
 use ed25519_dalek::pkcs8::{
     EncodePrivateKey as EdEncodePrivateKey, EncodePublicKey as EdEncodePublicKey,
 };
-use ed25519_dalek::SigningKey as EdSigningKey;
 use h3xy::parse_intel_hex;
 use rsa::rand_core::OsRng;
 use rsa::{RsaPrivateKey, RsaPublicKey};
@@ -22,7 +22,10 @@ fn write_rsa_keys(dir: &std::path::Path, prefix: &str) -> (std::path::PathBuf, s
     (private_path, public_path)
 }
 
-fn write_ed25519_keys(dir: &std::path::Path, prefix: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+fn write_ed25519_keys(
+    dir: &std::path::Path,
+    prefix: &str,
+) -> (std::path::PathBuf, std::path::PathBuf) {
     let secret = [0x42u8; 32];
     let signing = EdSigningKey::from_bytes(&secret);
     let verifying = signing.verifying_key();
@@ -67,7 +70,11 @@ fn test_cli_sv_fails_with_wrong_key() {
     let args = vec![
         format!("/IN:{};0x1000", input_path.display()),
         format!("/DP32:{};{}", private_path.display(), sig_path.display()),
-        format!("/SV4:{}!{}", wrong_public_path.display(), sig_path.display()),
+        format!(
+            "/SV4:{}!{}",
+            wrong_public_path.display(),
+            sig_path.display()
+        ),
     ];
     let output = run_h3xy(&args);
     assert!(!output.status.success());
@@ -128,7 +135,11 @@ fn assert_dp_placement_empty_input_noop(target: &str) {
 
     let args = vec![
         format!("/IN:{};0x1000", input_path.display()),
-        format!("/DP46:{target}:{};{}", private_path.display(), sig_path.display()),
+        format!(
+            "/DP46:{target}:{};{}",
+            private_path.display(),
+            sig_path.display()
+        ),
         "/XI".to_string(),
         "-o".to_string(),
         out_hex.display().to_string(),

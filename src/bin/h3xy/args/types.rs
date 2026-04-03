@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::Range;
+use crate::AddressRange;
 
 use super::parse::parse_option;
 
@@ -37,19 +37,19 @@ pub struct Args {
     pub s12x_map: bool,
 
     // Fill ranges: /FR:'range' with /FP:pattern
-    pub fill_ranges: Vec<Range>,
+    pub fill_ranges: Vec<AddressRange>,
     pub fill_pattern: Vec<u8>,
     pub fill_pattern_set: bool,
 
     // Cut ranges: /CR:'range1':'range2'
-    pub cut_ranges: Vec<Range>,
+    pub cut_ranges: Vec<AddressRange>,
 
     // Merge: /MO:file[;offset] or /MT:file[;offset]
     pub merge_opaque: Vec<MergeParam>,
     pub merge_transparent: Vec<MergeParam>,
 
     // Address range filter: /AR:'range'
-    pub address_range: Vec<Range>,
+    pub address_range: Vec<AddressRange>,
 
     // Log file: /L:file
     pub log_file: Option<PathBuf>,
@@ -91,7 +91,7 @@ pub struct Args {
     // dsPIC operations
     pub dspic_expand: Vec<DspicOp>,
     pub dspic_shrink: Vec<DspicOp>,
-    pub dspic_clear_ghost: Vec<Range>,
+    pub dspic_clear_ghost: Vec<AddressRange>,
 
     // Output format (only one allowed)
     pub output_format: Option<OutputFormat>,
@@ -104,7 +104,7 @@ pub struct Args {
 pub struct MergeParam {
     pub file: PathBuf,
     pub offset: Option<i64>,
-    pub range: Option<Range>,
+    pub range: Option<AddressRange>,
 }
 
 #[derive(Debug, Clone)]
@@ -127,14 +127,14 @@ pub struct ChecksumParams {
     pub algorithm: u8,
     pub target: ChecksumTarget,
     pub little_endian: bool,
-    pub range: Option<Range>,
+    pub range: Option<AddressRange>,
     pub forced_range: Option<ForcedRange>,
-    pub exclude_ranges: Vec<Range>,
+    pub exclude_ranges: Vec<AddressRange>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ForcedRange {
-    pub range: Range,
+    pub range: AddressRange,
     pub pattern: Vec<u8>,
 }
 
@@ -165,7 +165,7 @@ pub struct SignatureVerifyParams {
 
 #[derive(Debug, Clone)]
 pub struct DspicOp {
-    pub range: Range,
+    pub range: AddressRange,
     pub target: Option<u32>,
 }
 
@@ -184,23 +184,8 @@ pub enum OutputFormat {
     }, // /XA
     CCode,  // /XC
     FordIntelHex, // /XF
-    GmHeader {
-        addr: Option<u32>,
-    }, // /XG
-    GmHeaderOs {
-        addr: Option<u32>,
-    }, // /XGC
-    GmHeaderCal {
-        addr: Option<u32>,
-    }, // /XGCC
-    Gac,    // /XGAC
-    GacSwil, // /XGACSWIL
-    FlashKernel, // /XK
     Porsche, // /XP
     SeparateBinary, // /XSB
-    Vag,    // /XV
-    Vbf,    // /XVBF
-    FiatBin, // /XB
 }
 
 #[derive(Debug)]
@@ -238,22 +223,6 @@ impl Args {
             let path = std::path::Path::new(arg);
             arg.starts_with('/') && path.is_absolute() && path.exists()
         })
-    }
-
-    pub fn parse_from_str(args: &str) -> Result<Self, ParseArgError> {
-        let split = split_cli_args(args)?;
-        Self::parse_from(split)
-    }
-
-    pub fn parse_from_str_with<F>(
-        args: &str,
-        is_existing_abs_path: F,
-    ) -> Result<Self, ParseArgError>
-    where
-        F: Fn(&str) -> bool,
-    {
-        let split = split_cli_args(args)?;
-        Self::parse_from_with(split, is_existing_abs_path)
     }
 
     pub fn parse_from_with<F>(
@@ -317,66 +286,6 @@ impl Args {
 
         Ok(result)
     }
-}
-
-fn split_cli_args(input: &str) -> Result<Vec<String>, ParseArgError> {
-    let mut args = Vec::new();
-    let mut current = String::new();
-    let mut quote: Option<char> = None;
-    let mut escape = false;
-
-    for c in input.chars() {
-        if escape {
-            current.push(c);
-            escape = false;
-            continue;
-        }
-
-        if c == '\\' {
-            escape = true;
-            continue;
-        }
-
-        if let Some(q) = quote {
-            if c == q {
-                quote = None;
-            } else {
-                current.push(c);
-            }
-            continue;
-        }
-
-        if c == '"' || c == '\'' {
-            quote = Some(c);
-            continue;
-        }
-
-        if c.is_whitespace() {
-            if !current.is_empty() {
-                args.push(current);
-                current = String::new();
-            }
-            continue;
-        }
-
-        current.push(c);
-    }
-
-    if escape {
-        current.push('\\');
-    }
-
-    if quote.is_some() {
-        return Err(ParseArgError::InvalidOption(
-            "unterminated quote".to_string(),
-        ));
-    }
-
-    if !current.is_empty() {
-        args.push(current);
-    }
-
-    Ok(args)
 }
 
 #[cfg(test)]

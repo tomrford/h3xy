@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 pub fn temp_dir(prefix: &str) -> PathBuf {
