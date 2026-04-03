@@ -468,3 +468,17 @@ fn test_cli_output_option_exclusive() {
     let output = run_h3xy(&args);
     assert!(!output.status.success());
 }
+
+#[test]
+fn test_cli_unsupported_output_rejected_without_output_file() {
+    let dir = temp_dir("cli_xv_unsupported");
+    let input = dir.join("input.bin");
+    write_file(&input, &[0x01, 0x02]);
+
+    let args = vec![format!("/IN:{};0x0", input.display()), "/XV".to_string()];
+    let output = run_h3xy(&args);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("invalid option: /XV"));
+}

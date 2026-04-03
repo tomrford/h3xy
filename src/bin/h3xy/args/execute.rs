@@ -12,7 +12,7 @@ use super::signature::{
     apply_data_processing, apply_signature_verification, is_supported_data_processing_method,
     is_supported_signature_verify_method,
 };
-use super::types::{Args, ChecksumParams, ChecksumTarget, OutputFormat, ParseArgError};
+use super::types::{Args, ChecksumParams, ChecksumTarget, ParseArgError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 impl Args {
@@ -88,13 +88,6 @@ impl Args {
             return Err(CliError::Unsupported(
                 "cannot combine /CS* with /CSM* in one command".into(),
             ));
-        }
-        if let Some(message) = self
-            .output_format
-            .as_ref()
-            .and_then(unsupported_output_format_message)
-        {
-            return Err(CliError::Unsupported(message));
         }
         Ok(())
     }
@@ -370,34 +363,6 @@ impl Args {
         provider: &P,
     ) -> Result<(), CliError> {
         write_output_for_args(self, hexfile, provider)
-    }
-}
-
-fn unsupported_output_format_message(format: &OutputFormat) -> Option<String> {
-    let detail = |addr: Option<u32>| match addr {
-        Some(addr) => format!(":{addr:#X}"),
-        None => String::new(),
-    };
-
-    match format {
-        OutputFormat::GmHeader { addr } => {
-            Some(format!("output format /XG{} is not supported yet", detail(*addr)))
-        }
-        OutputFormat::GmHeaderOs { addr } => Some(format!(
-            "output format /XGC{} is not supported yet",
-            detail(*addr)
-        )),
-        OutputFormat::GmHeaderCal { addr } => Some(format!(
-            "output format /XGCC{} is not supported yet",
-            detail(*addr)
-        )),
-        OutputFormat::Gac => Some("output format /XGAC is not supported yet".into()),
-        OutputFormat::GacSwil => Some("output format /XGACSWIL is not supported yet".into()),
-        OutputFormat::FlashKernel => Some("output format /XK is not supported yet".into()),
-        OutputFormat::Vag => Some("output format /XV is not supported yet".into()),
-        OutputFormat::Vbf => Some("output format /XVBF is not supported yet".into()),
-        OutputFormat::FiatBin => Some("output format /XB is not supported yet".into()),
-        _ => None,
     }
 }
 

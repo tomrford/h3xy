@@ -136,15 +136,15 @@ cargo run -- [args]   # Run CLI
 ### TODOs (current)
 - Review segment overflow policy (saturating `end_address` vs strict error) once validation suite runs.
 - Finish CLI parsing cleanup (table-driven for remaining non-output options).
-- Consider deeper ops error context inside core ops (beyond flag wrappers).
+- Consider deeper ops error context inside core ops and CLI option wrappers.
 - Crate reuse decision: keep hand-rolled Intel-HEX/S-Record/HEX-ASCII writers/parsers for parity; `bin_file` (used in mint) remains a candidate once validation suite proves equivalence.
 - Parallelization: use subagents for independent workstreams (parse refactor, checksum tests, checksum refactor) to avoid context pollution.
 
 ### Project philosophy
 - CLI must be a drop-in HexView replacement for non-proprietary formats: binary-equivalent outputs for Intel HEX, S-Record, HEX ASCII, and raw binary.
-- Library API should mirror CLI options: one public function per CLI operation/flag, with semantics matching HexView.
-- CLI execution model should be explicit and linear: “for flag in flags, if present, call flag_function”, preserving HexView’s operation order and behavior.
-- The library should enable consumers to reproduce CLI behavior by composing these per-flag functions in the same order.
+- Library API should center on `HexFile`, `Segment`, and `AddressRange`, with typed per-operation methods and format parse/write helpers that preserve HexView semantics.
+- CLI execution model should be explicit and linear: “for flag in flags, if present, call the corresponding `HexFile` operation”, preserving HexView’s operation order and behavior.
+- The library should enable consumers to reproduce CLI behavior by composing those typed operations in the same order.
 
 ## Validation Scripts
 
