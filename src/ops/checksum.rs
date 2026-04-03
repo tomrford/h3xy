@@ -307,9 +307,12 @@ impl HexFile {
         let size = options.algorithm.result_size() as u32;
         match target {
             ChecksumTarget::Address(addr) => {
-                if let Ok(target_range) = AddressRange::from_start_length(*addr, size) {
-                    effective_options.target_exclude = Some(target_range);
-                }
+                let target_range = AddressRange::from_start_length(*addr, size).map_err(|_| {
+                    OpsError::AddressOverflow(format!(
+                        "checksum target at {addr:#X} with size {size} overflows u32"
+                    ))
+                })?;
+                effective_options.target_exclude = Some(target_range);
             }
             ChecksumTarget::OverwriteEnd => {
                 // Overwrite end writes at (max_address - size + 1)
@@ -945,6 +948,20 @@ mod tests {
         };
         let result = hf.checksum(&options, &ChecksumTarget::Append);
         assert!(matches!(result, Err(OpsError::AddressOverflow(_))));
+    }
+
+    #[test]
+    fn test_hexfile_checksum_fixed_target_overflow() {
+        let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01])]);
+        let options = ChecksumOptions {
+            algorithm: ChecksumAlgorithm::ByteSumBe,
+            range: None,
+            little_endian_output: false,
+            ..Default::default()
+        };
+        let result = hf.checksum(&options, &ChecksumTarget::Address(u32::MAX));
+        assert!(matches!(result, Err(OpsError::AddressOverflow(_))));
+        assert_eq!(hf.segments(), &[Segment::new(0x1000, vec![0x01])]);
     }
 
     #[test]

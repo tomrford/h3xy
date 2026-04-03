@@ -301,15 +301,30 @@ impl HexFile {
             }
             let new_addr = (segment.start_address as i64).checked_add(offset);
 
-            match new_addr {
-                Some(addr) if addr >= 0 && addr <= u32::MAX as i64 => {}
+            let new_start = match new_addr {
+                Some(addr) if addr >= 0 && addr <= u32::MAX as i64 => addr as u32,
                 _ => {
                     return Err(OpsError::AddressOverflow(format!(
                         "{:#X} + {} is out of u32 range",
                         segment.start_address, offset
                     )));
                 }
-            }
+            };
+
+            let length = u32::try_from(segment.len()).map_err(|_| {
+                OpsError::AddressOverflow(format!(
+                    "segment length {} exceeds u32 range",
+                    segment.len()
+                ))
+            })?;
+            AddressRange::from_start_length(new_start, length).map_err(|_| {
+                OpsError::AddressOverflow(format!(
+                    "{:#X} + {} with length {} exceeds u32 range",
+                    segment.start_address,
+                    offset,
+                    segment.len()
+                ))
+            })?;
         }
 
         // Second pass: apply mutation
@@ -708,6 +723,14 @@ mod tests {
         assert!(matches!(result, Err(OpsError::AddressOverflow(_))));
         // Unchanged
         assert_eq!(hf.segments()[0].start_address, u32::MAX - 0x100);
+    }
+
+    #[test]
+    fn test_offset_segment_end_overflow_errors() {
+        let mut hf = HexFile::with_segments(vec![Segment::new(u32::MAX - 1, vec![0xAA, 0xBB])]);
+        let result = hf.offset_addresses(1);
+        assert!(matches!(result, Err(OpsError::AddressOverflow(_))));
+        assert_eq!(hf.segments()[0].start_address, u32::MAX - 1);
     }
 
     #[test]

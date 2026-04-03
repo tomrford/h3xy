@@ -8,6 +8,12 @@ The big surface cleanup is done:
 - no in-memory CLI execution path
 - public core model is `HexFile`, `Segment`, `AddressRange`
 
+Recently fixed:
+- fixed-address checksum targets now reject overflow before calculation/write
+- `offset_addresses` and `scale_addresses` now validate full segment spans
+- `/II2` now participates in default output and INI path resolution
+- singular checksum and dsPIC range parsers now reject multi-range input
+
 ## Verify On Reference Machine
 
 These are contract questions, not just implementation bugs.
@@ -35,53 +41,6 @@ Current state:
 Need:
 - verify HexView behavior
 - then either keep cwd-relative resolution or make log-file-relative resolution explicit
-
-## Low-Risk Fixes
-
-These look fixable without needing the manual first.
-
-### Fixed-address checksum overflow
-
-[`src/ops/checksum.rs`](/Users/tomford/code/projects/h3xy/src/ops/checksum.rs)
-
-For `ChecksumTarget::Address`, target exclusion only happens if `AddressRange::from_start_length` succeeds, but the checksum bytes are still written afterward. Near the top of address space this can silently create an overflowed write target.
-
-Likely fix:
-- reject overflowing fixed targets before checksum calculation and before write
-
-### Address transforms validate only segment starts
-
-[`src/ops/filter.rs`](/Users/tomford/code/projects/h3xy/src/ops/filter.rs)
-[`src/ops/transform.rs`](/Users/tomford/code/projects/h3xy/src/ops/transform.rs)
-
-`offset_addresses` and `scale_addresses` validate only the transformed start address, not the full span. A segment can end past `u32::MAX` and become impossible raw state.
-
-Likely fix:
-- validate transformed end address as well as start
-- add tests near `u32::MAX`
-
-### `/II2` missing from default output / INI resolution
-
-[`src/bin/h3xy/args/io.rs`](/Users/tomford/code/projects/h3xy/src/bin/h3xy/args/io.rs)
-
-`/II2` is treated as a real primary input for execution, but the `/XC`, `/XF`, `/XP`, and INI path resolvers only consider positional input, `/IN`, and `/IA`.
-
-Reproduced:
-- `/II2=<tmp>/in.hex /XP` still errors with `output file required for /XP (use -o <file>)`
-
-Likely fix:
-- centralize “primary input path” resolution
-- reuse it across default output and INI path helpers
-
-### Singular parsers silently take only the first range
-
-[`src/bin/h3xy/args/parse_util.rs`](/Users/tomford/code/projects/h3xy/src/bin/h3xy/args/parse_util.rs)
-
-Forced checksum range parsing, checksum range parsing, and dsPIC parsing still call `parse_hexview_ranges(...)` and keep only `.next()`.
-
-Likely fix:
-- reject `>1` ranges in singular contexts
-- add parser tests for multi-range rejection
 
 ## Needs Design / More Consideration
 

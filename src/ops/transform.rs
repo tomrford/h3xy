@@ -406,10 +406,29 @@ impl HexFile {
     pub fn scale_addresses(&mut self, factor: u32) -> Result<(), OpsError> {
         // First pass: validate all addresses
         for segment in self.segments() {
-            segment.start_address.checked_mul(factor).ok_or_else(|| {
+            let new_start = segment.start_address.checked_mul(factor).ok_or_else(|| {
                 OpsError::AddressOverflow(format!(
                     "{:#X} * {} overflows u32",
                     segment.start_address, factor
+                ))
+            })?;
+
+            if segment.is_empty() {
+                continue;
+            }
+
+            let length = u32::try_from(segment.len()).map_err(|_| {
+                OpsError::AddressOverflow(format!(
+                    "segment length {} exceeds u32 range",
+                    segment.len()
+                ))
+            })?;
+            AddressRange::from_start_length(new_start, length).map_err(|_| {
+                OpsError::AddressOverflow(format!(
+                    "{:#X} * {} with length {} exceeds u32 range",
+                    segment.start_address,
+                    factor,
+                    segment.len()
                 ))
             })?;
         }
@@ -1002,6 +1021,15 @@ mod tests {
         assert!(matches!(result, Err(OpsError::AddressOverflow(_))));
         // Unchanged (transactional)
         assert_eq!(hf.segments()[0].start_address, original_addr);
+    }
+
+    #[test]
+    fn test_scale_segment_end_overflow_errors() {
+        let start = u32::MAX / 2;
+        let mut hf = HexFile::with_segments(vec![Segment::new(start, vec![0xAA, 0xBB, 0xCC])]);
+        let result = hf.scale_addresses(2);
+        assert!(matches!(result, Err(OpsError::AddressOverflow(_))));
+        assert_eq!(hf.segments()[0].start_address, start);
     }
 
     #[test]

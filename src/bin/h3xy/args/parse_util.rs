@@ -25,6 +25,17 @@ pub(super) fn parse_hexview_ranges(s: &str) -> Result<Vec<AddressRange>, ParseAr
     crate::parse_hexview_ranges(s).map_err(|e| ParseArgError::InvalidRange(e.to_string()))
 }
 
+fn parse_single_hexview_range(s: &str, context: &str) -> Result<AddressRange, ParseArgError> {
+    let ranges = parse_hexview_ranges(s)?;
+    match ranges.as_slice() {
+        [range] => Ok(*range),
+        [] => Err(ParseArgError::InvalidRange(s.to_string())),
+        _ => Err(ParseArgError::InvalidOption(format!(
+            "{context} requires exactly one range"
+        ))),
+    }
+}
+
 pub(super) fn parse_hex_bytes(s: &str) -> Result<Vec<u8>, ParseArgError> {
     let s = s.trim();
     if !s.len().is_multiple_of(2) {
@@ -219,11 +230,7 @@ pub(super) fn parse_checksum(
             } else {
                 (forced, None)
             };
-            let ranges = parse_hexview_ranges(range_str)?;
-            let range = ranges
-                .into_iter()
-                .next()
-                .ok_or_else(|| ParseArgError::InvalidRange(range_str.to_string()))?;
+            let range = parse_single_hexview_range(range_str, "forced checksum range")?;
             let pattern = if let Some(pattern_str) = pattern_str {
                 let pattern_str = pattern_str.trim();
                 let pattern_str = pattern_str
@@ -251,8 +258,7 @@ pub(super) fn parse_checksum(
         let mut pieces = part.split('/');
         let range_part = pieces.next().unwrap_or_default();
         if !range_part.is_empty() {
-            let ranges = parse_hexview_ranges(range_part)?;
-            range = ranges.into_iter().next();
+            range = Some(parse_single_hexview_range(range_part, "checksum range")?);
         }
         for exclude in pieces {
             if exclude.is_empty() {
@@ -362,22 +368,14 @@ pub(super) fn parse_signature_verify_params(
 pub(super) fn parse_dspic_op(s: &str) -> Result<DspicOp, ParseArgError> {
     let s = strip_quotes(s);
     if let Some((range_str, target_str)) = s.split_once(';') {
-        let ranges = parse_hexview_ranges(range_str)?;
         let target = parse_number(target_str)?;
         Ok(DspicOp {
-            range: ranges
-                .into_iter()
-                .next()
-                .ok_or_else(|| ParseArgError::InvalidRange(s.to_string()))?,
+            range: parse_single_hexview_range(range_str, "dsPIC range")?,
             target: Some(target),
         })
     } else {
-        let ranges = parse_hexview_ranges(s)?;
         Ok(DspicOp {
-            range: ranges
-                .into_iter()
-                .next()
-                .ok_or_else(|| ParseArgError::InvalidRange(s.to_string()))?,
+            range: parse_single_hexview_range(s, "dsPIC range")?,
             target: None,
         })
     }
@@ -538,6 +536,18 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_checksum_forced_multi_range_rejected() {
+        let result = parse_checksum("0", "@append;!0x1000-0x1001:0x2000-0x2001#AA", false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_checksum_multi_range_rejected() {
+        let result = parse_checksum("0", "@append;0x1000-0x1001:0x2000-0x2001", false);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_parse_data_processing_params_with_placement_and_output() {
         let params = parse_data_processing_params(32, "@append:key.pem;sig.bin").unwrap();
         assert!(matches!(params.placement, Some(ChecksumTarget::Append)));
@@ -550,5 +560,11 @@ mod tests {
         let params = parse_signature_verify_params(4, "pub.pem!sig.bin").unwrap();
         assert_eq!(params.key_info, "pub.pem");
         assert_eq!(params.signature_info, "sig.bin");
+    }
+
+    #[test]
+    fn test_parse_dspic_op_multi_range_rejected() {
+        let result = parse_dspic_op("0x1000-0x1001:0x2000-0x2001;0x3000");
+        assert!(result.is_err());
     }
 }

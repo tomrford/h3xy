@@ -313,16 +313,8 @@ pub(super) fn resolve_c_code_output_path(args: &Args) -> Result<PathBuf, CliErro
         return Ok(path);
     }
 
-    if let Some(ref input) = args.input_file {
+    if let Some(input) = primary_input_path(args) {
         return Ok(input.with_extension("c"));
-    }
-
-    if let Some(ref import) = args.import_binary {
-        return Ok(import.file.with_extension("c"));
-    }
-
-    if let Some(ref import) = args.import_hex_ascii {
-        return Ok(import.file.with_extension("c"));
     }
 
     Err(CliError::Other(
@@ -358,16 +350,8 @@ pub(super) fn resolve_ford_output_path(args: &Args) -> Result<PathBuf, CliError>
         return Ok(path);
     }
 
-    if let Some(ref input) = args.input_file {
+    if let Some(input) = primary_input_path(args) {
         return Ok(input.with_extension("hex"));
-    }
-
-    if let Some(ref import) = args.import_binary {
-        return Ok(import.file.with_extension("hex"));
-    }
-
-    if let Some(ref import) = args.import_hex_ascii {
-        return Ok(import.file.with_extension("hex"));
     }
 
     Err(CliError::Other(
@@ -401,16 +385,8 @@ pub(super) fn resolve_porsche_output_path(args: &Args) -> Result<PathBuf, CliErr
         return Ok(path);
     }
 
-    if let Some(ref input) = args.input_file {
+    if let Some(input) = primary_input_path(args) {
         return Ok(input.with_extension("bin"));
-    }
-
-    if let Some(ref import) = args.import_binary {
-        return Ok(import.file.with_extension("bin"));
-    }
-
-    if let Some(ref import) = args.import_hex_ascii {
-        return Ok(import.file.with_extension("bin"));
     }
 
     Err(CliError::Other(
@@ -423,21 +399,27 @@ fn resolve_ini_path(args: &Args) -> Result<PathBuf, CliError> {
         return Ok(path);
     }
 
-    if let Some(ref input) = args.input_file {
+    if let Some(input) = primary_input_path(args) {
         return Ok(input.with_extension("ini"));
-    }
-
-    if let Some(ref import) = args.import_binary {
-        return Ok(import.file.with_extension("ini"));
-    }
-
-    if let Some(ref import) = args.import_hex_ascii {
-        return Ok(import.file.with_extension("ini"));
     }
 
     Err(CliError::Other(
         "INI file required for /XC (use /P:<file>)".into(),
     ))
+}
+
+fn primary_input_path(args: &Args) -> Option<&Path> {
+    args.input_file
+        .as_deref()
+        .or(args
+            .import_binary
+            .as_ref()
+            .map(|import| import.file.as_path()))
+        .or(args
+            .import_hex_ascii
+            .as_ref()
+            .map(|import| import.file.as_path()))
+        .or(args.import_i16.as_deref())
 }
 
 fn derive_c_code_paths(output_path: &Path, prefix: &str) -> (PathBuf, PathBuf) {
@@ -706,5 +688,31 @@ mod tests {
         assert_eq!(checksum, 0x01 + 0x02 + 0xFF + 0xFF + 0x03);
 
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_resolve_default_paths_from_i16_input() {
+        let input = PathBuf::from("input.hex");
+        let args = Args {
+            import_i16: Some(input.clone()),
+            ..Args::default()
+        };
+
+        assert_eq!(
+            resolve_c_code_output_path(&args).unwrap(),
+            input.with_extension("c")
+        );
+        assert_eq!(
+            resolve_ford_output_path(&args).unwrap(),
+            input.with_extension("hex")
+        );
+        assert_eq!(
+            resolve_porsche_output_path(&args).unwrap(),
+            input.with_extension("bin")
+        );
+        assert_eq!(
+            resolve_ini_path(&args).unwrap(),
+            input.with_extension("ini")
+        );
     }
 }
