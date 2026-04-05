@@ -28,7 +28,7 @@ fn test_cut_fill_normalize() {
         },
     );
 
-    let norm = hf.normalized_lossy();
+    let norm = hf.normalized();
 
     // The first segment should now have 0xAA, then 0xCC fill, then 0xAA
     assert_eq!(norm.segments()[0].start_address, 0x1000);
@@ -55,7 +55,7 @@ fn test_merge_align_normalize_overwrite() {
     })
     .unwrap();
 
-    let norm = hf1.normalized_lossy();
+    let norm = hf1.normalized();
 
     // After merge (overwrite): 0x1003-0x1006 should be 0xBB
     // After align: starts at 0x1000
@@ -81,7 +81,7 @@ fn test_merge_align_normalize_preserve() {
     )
     .unwrap();
 
-    let norm = hf1.normalized_lossy();
+    let norm = hf1.normalized();
 
     // Existing data (AA) should be preserved at overlap
     let data = norm.read_bytes_contiguous(0x1003, 4).unwrap();
@@ -177,7 +177,7 @@ fn test_fill_gaps_then_merge_overwrite() {
     // Merge with overwrite
     hf_a.merge(&hf_b, &MergeOptions::default()).unwrap();
 
-    let norm = hf_a.normalized_lossy();
+    let norm = hf_a.normalized();
 
     // Check that merged data overwrote the filled zeros
     let data = norm.read_bytes_contiguous(0x1008, 4).unwrap();
@@ -213,7 +213,7 @@ fn test_fill_gaps_then_merge_preserve() {
     )
     .unwrap();
 
-    let norm = hf_a.normalized_lossy();
+    let norm = hf_a.normalized();
 
     // Existing filled zeros should be preserved (they were in hf_a which goes last in preserve mode)
     let data = norm.read_bytes_contiguous(0x1008, 4).unwrap();
@@ -275,7 +275,7 @@ fn test_filter_cut_fill_align_split() {
     hf.fill_gaps(0x00);
 
     // Now we have a single contiguous segment - verify data integrity
-    let norm = hf.normalized_lossy();
+    let norm = hf.normalized();
 
     // After fill_gaps, we have one contiguous segment
     assert_eq!(norm.segments().len(), 1);
@@ -311,20 +311,16 @@ fn test_operations_on_empty_file() {
     assert!(hf.segments().is_empty());
 }
 
-// --- Normalized vs normalized_lossy semantics ---
+// --- Normalization uses last-wins overlap resolution ---
 
 #[test]
-fn test_normalized_strict_vs_lossy() {
+fn test_normalized_last_wins_on_overlap() {
     let hf = HexFile::with_segments(vec![
         Segment::new(0x1000, vec![0xAA; 8]),
         Segment::new(0x1004, vec![0xBB; 4]), // overlaps
     ]);
 
-    // Strict normalization should fail
-    assert!(hf.normalized().is_err());
-
-    // Lossy should work, with last segment winning
-    let norm = hf.normalized_lossy();
+    let norm = hf.normalized();
     assert_eq!(norm.segments().len(), 1);
 
     // 0x1000-0x1003 = 0xAA (from first)
@@ -343,7 +339,7 @@ fn test_three_overlapping_segments_last_wins() {
         Segment::new(0x1002, vec![0x33]),
     ]);
 
-    let norm = hf.normalized_lossy();
+    let norm = hf.normalized();
     let data = norm.read_bytes_contiguous(0x1000, 4).unwrap();
 
     // 0x1000 = 0x11 (only first covers it)

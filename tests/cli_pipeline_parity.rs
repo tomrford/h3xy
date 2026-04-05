@@ -230,7 +230,7 @@ fn test_cli_pipeline_parity_xsb_split() {
             },
         )
         .unwrap();
-    let mut segments = hexfile.normalized_lossy().into_segments();
+    let mut segments = hexfile.normalized().into_segments();
     segments.sort_by_key(|s| s.start_address);
 
     assert_eq!(cli_a, segments[0].data);

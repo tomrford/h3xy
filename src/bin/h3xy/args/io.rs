@@ -364,7 +364,7 @@ pub(super) fn write_porsche_output(
     hexfile: &HexFile,
     output_path: &Path,
 ) -> Result<(), CliError> {
-    let mut normalized = hexfile.normalized_lossy();
+    let mut normalized = hexfile.normalized();
     if normalized.segments().is_empty() {
         std::fs::write(output_path, [])?;
         return Ok(());
@@ -502,7 +502,7 @@ fn build_ford_header(
 
 fn compute_ford_checksum(hexfile: &HexFile) -> u16 {
     let mut sum: u16 = 0;
-    let mut segments = hexfile.normalized_lossy().into_segments();
+    let mut segments = hexfile.normalized().into_segments();
     segments.sort_by_key(|s| s.start_address);
     for segment in segments {
         for byte in segment.data {
@@ -513,7 +513,7 @@ fn compute_ford_checksum(hexfile: &HexFile) -> u16 {
 }
 
 fn format_erase_sectors(hexfile: &HexFile, alignment: Option<u32>) -> String {
-    let mut segments = hexfile.normalized_lossy().into_segments();
+    let mut segments = hexfile.normalized().into_segments();
     segments.sort_by_key(|s| s.start_address);
     let mut parts = Vec::new();
 
@@ -555,7 +555,7 @@ fn current_date_mmddyyyy() -> Option<String> {
 }
 
 fn write_separate_binary(hexfile: &HexFile, path: &Path) -> Result<(), CliError> {
-    let normalized = hexfile.normalized_lossy();
+    let normalized = hexfile.normalized();
     let mut segments = normalized.into_segments();
     segments.sort_by_key(|s| s.start_address);
 

@@ -1,4 +1,4 @@
-use super::{ParseError, normalized_sorted_segments, push_crlf, push_hex_byte};
+use super::{ParseError, push_crlf, push_hex_byte};
 use crate::{HexFile, Segment};
 
 const RECORD_DATA: u8 = 0x00;
@@ -71,7 +71,7 @@ pub fn parse_intel_hex(input: &[u8]) -> Result<HexFile, ParseError> {
             });
         }
 
-        let bytes = parse_hex_bytes(hex_str, line_num)?;
+        let bytes = super::parse_hex_bytes(hex_str.as_bytes(), line_num)?;
         validate_checksum(&bytes, line_num)?;
 
         let byte_count = bytes[0] as usize;
@@ -204,7 +204,7 @@ pub fn parse_intel_hex_16bit(input: &[u8]) -> Result<HexFile, ParseError> {
 
 /// Write Intel-HEX output. CLI: /XI.
 pub fn write_intel_hex(hexfile: &HexFile, options: &IntelHexWriteOptions) -> Vec<u8> {
-    let segments = normalized_sorted_segments(hexfile);
+    let segments = hexfile.normalized().into_segments();
     let mut output = Vec::new();
     let bytes_per_line = if options.bytes_per_line == 0 {
         16
@@ -334,36 +334,6 @@ fn write_record(output: &mut Vec<u8>, record_type: u8, address: u16, data: &[u8]
     push_crlf(output);
 }
 
-fn parse_hex_bytes(hex_str: &str, line_num: usize) -> Result<Vec<u8>, ParseError> {
-    let bytes = hex_str.as_bytes();
-    if !bytes.len().is_multiple_of(2) {
-        return Err(ParseError::InvalidRecord {
-            line: line_num,
-            message: "odd number of hex digits".to_string(),
-        });
-    }
-
-    let mut out = Vec::with_capacity(bytes.len() / 2);
-    for chunk in bytes.chunks_exact(2) {
-        let high = hex_digit(chunk[0], line_num)?;
-        let low = hex_digit(chunk[1], line_num)?;
-        out.push((high << 4) | low);
-    }
-
-    Ok(out)
-}
-
-fn hex_digit(b: u8, line_num: usize) -> Result<u8, ParseError> {
-    match b {
-        b'0'..=b'9' => Ok(b - b'0'),
-        b'A'..=b'F' => Ok(b - b'A' + 10),
-        b'a'..=b'f' => Ok(b - b'a' + 10),
-        _ => Err(ParseError::InvalidHexDigit {
-            line: line_num,
-            char: b as char,
-        }),
-    }
-}
 
 fn validate_checksum(bytes: &[u8], line_num: usize) -> Result<(), ParseError> {
     let sum: u8 = bytes.iter().fold(0u8, |acc, &b| acc.wrapping_add(b));

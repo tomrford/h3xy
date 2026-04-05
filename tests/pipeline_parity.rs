@@ -66,5 +66,5 @@ fn test_operations_match_cli_basic() {
         })
         .unwrap();
 
-    assert_eq!(hexfile.normalized_lossy(), cli_hexfile.normalized_lossy());
+    assert_eq!(hexfile.normalized(), cli_hexfile.normalized());
 }

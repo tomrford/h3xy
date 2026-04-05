@@ -1,4 +1,4 @@
-use crate::io::{ParseError, normalized_sorted_segments, push_crlf, push_hex_byte};
+use crate::io::{ParseError, push_crlf, push_hex_byte};
 use crate::{HexFile, Segment};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,7 +44,7 @@ pub fn parse_srec(data: &[u8]) -> Result<HexFile, ParseError> {
         }
 
         let record_type = line[1] as char;
-        let record_bytes = parse_hex_bytes(&line[2..], line_no)?;
+        let record_bytes = super::parse_hex_bytes(&line[2..], line_no)?;
         if record_bytes.is_empty() {
             return Err(ParseError::InvalidRecord {
                 line: line_no,
@@ -135,7 +135,7 @@ pub fn parse_srec(data: &[u8]) -> Result<HexFile, ParseError> {
 
 /// Write Motorola S-Record output. CLI: /XS.
 pub fn write_srec(hexfile: &HexFile, options: &SRecordWriteOptions) -> Result<Vec<u8>, ParseError> {
-    let normalized = hexfile.normalized_lossy();
+    let normalized = hexfile.normalized();
     let max_addr = normalized.max_address().unwrap_or(0);
 
     let auto_type = if max_addr <= 0xFFFF {
@@ -166,7 +166,7 @@ pub fn write_srec(hexfile: &HexFile, options: &SRecordWriteOptions) -> Result<Ve
         options.bytes_per_line
     } as usize;
 
-    let segments = normalized_sorted_segments(&normalized);
+    let segments = normalized.into_segments();
 
     let mut out = Vec::new();
     let (addr_len, record_digit) = match record_type {
@@ -208,33 +208,6 @@ pub fn write_srec(hexfile: &HexFile, options: &SRecordWriteOptions) -> Result<Ve
     let checksum = expected_checksum(&term);
     push_record_line(&mut out, term_digit, &term, checksum);
 
-    Ok(out)
-}
-
-fn parse_hex_bytes(data: &[u8], line: usize) -> Result<Vec<u8>, ParseError> {
-    if !data.len().is_multiple_of(2) {
-        return Err(ParseError::InvalidRecord {
-            line,
-            message: "odd number of hex digits".to_string(),
-        });
-    }
-    let mut out = Vec::with_capacity(data.len() / 2);
-    let mut iter = data.iter();
-    while let (Some(&hi), Some(&lo)) = (iter.next(), iter.next()) {
-        let hi = (hi as char)
-            .to_digit(16)
-            .ok_or(ParseError::InvalidHexDigit {
-                line,
-                char: hi as char,
-            })?;
-        let lo = (lo as char)
-            .to_digit(16)
-            .ok_or(ParseError::InvalidHexDigit {
-                line,
-                char: lo as char,
-            })?;
-        out.push(((hi << 4) | lo) as u8);
-    }
     Ok(out)
 }
 
@@ -283,7 +256,7 @@ mod tests {
         };
         let out = write_srec(&hexfile, &options).unwrap();
         let parsed = parse_srec(&out).unwrap();
-        let norm = parsed.normalized_lossy();
+        let norm = parsed.normalized();
         assert_eq!(norm.segments().len(), 1);
         assert_eq!(norm.segments()[0].start_address, 0x1000);
         assert_eq!(norm.segments()[0].data, vec![0x01, 0x02, 0x03]);
@@ -308,7 +281,7 @@ mod tests {
     fn test_parse_lowercase_prefix() {
         let data = b"s10500000102f7\ns9030000fc\n";
         let parsed = parse_srec(data).unwrap();
-        let norm = parsed.normalized_lossy();
+        let norm = parsed.normalized();
         assert_eq!(norm.segments()[0].start_address, 0x0000);
         assert_eq!(norm.segments()[0].data, vec![0x01, 0x02]);
     }

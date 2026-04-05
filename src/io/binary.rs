@@ -43,7 +43,7 @@ pub fn write_binary(hexfile: &HexFile, options: &BinaryWriteOptions) -> Vec<u8> 
     }
 
     if let Some(fill) = options.fill_gaps {
-        let mut filled = hexfile.normalized_lossy();
+        let mut filled = hexfile.normalized();
         filled.fill_gaps(fill);
         if let Some(segment) = filled.segments().first() {
             return segment.data.clone();

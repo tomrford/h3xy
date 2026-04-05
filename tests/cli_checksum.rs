@@ -27,7 +27,7 @@ fn run_checksum_hex(input: &[u8], cs_arg: &str) -> h3xy::HexFile {
 #[test]
 fn test_cli_checksum_append() {
     let hexfile = run_checksum_hex(&[0x01, 0x02, 0x03, 0x04], "/CS0:@append");
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x1000, 6).unwrap(),
         vec![0x01, 0x02, 0x03, 0x04, 0x00, 0x0A]
@@ -37,7 +37,7 @@ fn test_cli_checksum_append() {
 #[test]
 fn test_cli_checksum_default_append_without_target() {
     let hexfile = run_checksum_hex(&[0x01, 0x02, 0x03, 0x04], "/CS0");
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x1000, 6).unwrap(),
         vec![0x01, 0x02, 0x03, 0x04, 0x00, 0x0A]
@@ -47,7 +47,7 @@ fn test_cli_checksum_default_append_without_target() {
 #[test]
 fn test_cli_checksum_upfront() {
     let hexfile = run_checksum_hex(&[0x01, 0x02, 0x03, 0x04], "/CS0:@upfront");
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x0FFE, 6).unwrap(),
         vec![0x00, 0x0A, 0x01, 0x02, 0x03, 0x04]
@@ -59,7 +59,7 @@ fn test_cli_checksum_begin() {
     // @begin writes checksum at start of data (0x1000-0x1001), excluding those bytes
     // Sum of 0x03 + 0x04 = 0x07, BE format = [0x00, 0x07]
     let hexfile = run_checksum_hex(&[0x01, 0x02, 0x03, 0x04], "/CS0:@begin");
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x1000, 4).unwrap(),
         vec![0x00, 0x07, 0x03, 0x04]
@@ -71,7 +71,7 @@ fn test_cli_checksum_overwrite_end() {
     // @end writes checksum at end of data (0x1002-0x1003), excluding those bytes
     // Sum of 0x01 + 0x02 = 0x03, BE format = [0x00, 0x03]
     let hexfile = run_checksum_hex(&[0x01, 0x02, 0x03, 0x04], "/CS0:@end");
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x1000, 4).unwrap(),
         vec![0x01, 0x02, 0x00, 0x03]
@@ -83,7 +83,7 @@ fn test_cli_checksum_address() {
     // @0x1001 writes checksum at 0x1001-0x1002, excluding those bytes
     // Sum of 0x01 + 0x04 = 0x05, BE format = [0x00, 0x05]
     let hexfile = run_checksum_hex(&[0x01, 0x02, 0x03, 0x04], "/CS0:@0x1001");
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x1000, 4).unwrap(),
         vec![0x01, 0x00, 0x05, 0x04]
@@ -93,7 +93,7 @@ fn test_cli_checksum_address() {
 #[test]
 fn test_cli_checksum_limited_range() {
     let hexfile = run_checksum_hex(&[0x01, 0x02, 0x03, 0x04], "/CS0:@append;0x1000-0x1001");
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x1000, 6).unwrap(),
         vec![0x01, 0x02, 0x03, 0x04, 0x00, 0x03]
@@ -106,7 +106,7 @@ fn test_cli_checksum_exclude_range() {
         &[0x01, 0x02, 0x03, 0x04],
         "/CS0:@append;0x1000-0x1003/0x1001-0x1002",
     );
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x1000, 6).unwrap(),
         vec![0x01, 0x02, 0x03, 0x04, 0x00, 0x05]
@@ -116,7 +116,7 @@ fn test_cli_checksum_exclude_range() {
 #[test]
 fn test_cli_checksum_forced_range_fill() {
     let hexfile = run_checksum_hex(&[0x01, 0x02], "/CS0:@append;!0x1000-0x1003#FF");
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x1000, 2).unwrap(),
         vec![0x01, 0x02]
@@ -130,7 +130,7 @@ fn test_cli_checksum_forced_range_fill() {
 #[test]
 fn test_cli_checksum_little_endian_output() {
     let hexfile = run_checksum_hex(&[0x01, 0x02, 0x03, 0x04], "/CSR0:@append");
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x1000, 6).unwrap(),
         vec![0x01, 0x02, 0x03, 0x04, 0x0A, 0x00]
@@ -213,7 +213,7 @@ fn test_cli_checksum_multi_sequential_dependency() {
 
     let data = std::fs::read(&out_path).unwrap();
     let hexfile = parse_intel_hex(&data).unwrap();
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x1000, 6).unwrap(),
         vec![0x00, 0x07, 0x03, 0x04, 0x00, 0x0E]
@@ -242,7 +242,7 @@ fn test_cli_checksum_multi_mixed_targets_with_file() {
 
     let data = std::fs::read(&out_path).unwrap();
     let hexfile = parse_intel_hex(&data).unwrap();
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x1000, 6).unwrap(),
         vec![0x00, 0x07, 0x03, 0x04, 0x00, 0x0E]

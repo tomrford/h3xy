@@ -137,6 +137,32 @@ impl FromStr for AddressRange {
     }
 }
 
+/// Merge overlapping or adjacent ranges into a minimal sorted set.
+pub fn merge_ranges(ranges: &[AddressRange]) -> Vec<AddressRange> {
+    let mut sorted = ranges.to_vec();
+    sorted.sort_by_key(|r| r.start());
+
+    let mut merged: Vec<AddressRange> = Vec::new();
+    for range in sorted {
+        if let Some(last) = merged.last_mut() {
+            let adjacent = last
+                .end()
+                .checked_add(1)
+                .map(|v| range.start() <= v)
+                .unwrap_or(false);
+            if range.start() <= last.end() || adjacent {
+                let new_end = last.end().max(range.end());
+                if let Ok(merged_range) = AddressRange::from_start_end(last.start(), new_end) {
+                    *last = merged_range;
+                    continue;
+                }
+            }
+        }
+        merged.push(range);
+    }
+    merged
+}
+
 /// Parse multiple ranges separated by ':'.
 pub fn parse_ranges(s: &str) -> Result<Vec<AddressRange>, AddressRangeError> {
     s.split(':').map(|part| part.parse()).collect()

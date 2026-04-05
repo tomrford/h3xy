@@ -120,7 +120,7 @@ fn test_cli_dp_placement_append_writes_signature_to_data() {
 
     let encoded = std::fs::read(&out_hex).unwrap();
     let parsed = parse_intel_hex(&encoded).unwrap();
-    let normalized = parsed.normalized_lossy();
+    let normalized = parsed.normalized();
     let bytes = normalized.read_bytes_contiguous(0x1000, 4 + 64).unwrap();
     assert_eq!(&bytes[..4], &[0x10, 0x20, 0x30, 0x40]);
 }
@@ -152,7 +152,7 @@ fn assert_dp_placement_empty_input_noop(target: &str) {
 
     let encoded = std::fs::read(&out_hex).unwrap();
     let parsed = parse_intel_hex(&encoded).unwrap();
-    assert!(parsed.normalized_lossy().segments().is_empty());
+    assert!(parsed.normalized().segments().is_empty());
 }
 
 #[test]

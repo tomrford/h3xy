@@ -79,11 +79,6 @@ pub struct Args {
     // Split blocks: /sb:size
     pub split_block_size: Option<u32>,
 
-    // Large file thresholds (performance tuning)
-    pub big_hex_file_threshold_kb: Option<u32>, // /BHFCT=xxx
-    pub buffer_to_file_threshold_kb: Option<u32>, // /BTFST=xxx
-    pub temp_buffer_size_kb: Option<u32>,       // /BTBS=xxx
-
     // Byte swap: /swapword or /swaplong
     pub swap_word: bool,
     pub swap_long: bool,

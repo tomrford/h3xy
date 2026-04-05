@@ -171,16 +171,9 @@ fn parse_numeric_option(
     value: &str,
 ) -> Result<bool, ParseArgError> {
     match key_upper {
-        "BHFCT" => {
-            args.big_hex_file_threshold_kb = Some(parse_number(value)?);
-            Ok(true)
-        }
-        "BTFST" => {
-            args.buffer_to_file_threshold_kb = Some(parse_number(value)?);
-            Ok(true)
-        }
-        "BTBS" => {
-            args.temp_buffer_size_kb = Some(parse_number(value)?);
+        // HexView performance-tuning flags; accepted for compat, values ignored.
+        "BHFCT" | "BTFST" | "BTBS" => {
+            let _ = parse_number(value)?;
             Ok(true)
         }
         "AD" => {

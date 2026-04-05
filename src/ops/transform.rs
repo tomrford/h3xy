@@ -78,7 +78,7 @@ impl HexFile {
         }
 
         // Work on a normalized snapshot to merge any existing overlaps
-        let normalized = self.normalized_lossy();
+        let normalized = self.normalized();
         let mut result = HexFile::new();
 
         // First, add fill segments as LOW priority (prepend = loses on overlap)
@@ -110,7 +110,7 @@ impl HexFile {
         }
 
         // Normalize to merge fill with data (original data wins on overlap)
-        self.set_segments(result.normalized_lossy().into_segments());
+        self.set_segments(result.normalized().into_segments());
         Ok(())
     }
 
@@ -123,7 +123,7 @@ impl HexFile {
         let mut new_segments: Vec<Segment> = Vec::new();
         let max_size_usize = max_size as usize;
 
-        for segment in self.segments_mut().drain(..) {
+        for segment in self.take_segments() {
             if segment.len() <= max_size_usize {
                 new_segments.push(segment);
                 continue;

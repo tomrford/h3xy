@@ -1,12 +1,10 @@
-pub mod error;
 pub mod hexfile;
 pub mod io;
 pub mod ops;
 pub mod range;
 pub mod segment;
 
-pub use error::Error;
-pub use hexfile::{HexFile, HexFileError};
+pub use hexfile::HexFile;
 pub use io::{
     BinaryWriteOptions, CCodeOutput, CCodeWordType, CCodeWriteOptions, HexAsciiWriteOptions,
     SRecordType, SRecordWriteOptions, parse_binary, parse_hex_ascii, parse_srec, write_binary,
@@ -21,5 +19,5 @@ pub use ops::{
     ChecksumTarget, FillOptions, ForcedRange, MergeMode, MergeOptions, OpsError, RemapOptions,
     SwapMode,
 };
-pub use range::{AddressRange, AddressRangeError, parse_hexview_ranges, parse_ranges};
+pub use range::{AddressRange, AddressRangeError, merge_ranges, parse_hexview_ranges, parse_ranges};
 pub use segment::Segment;

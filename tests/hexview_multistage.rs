@@ -20,7 +20,7 @@ fn test_fill_region_preserves_existing_data() {
         },
     );
 
-    let norm = hf.normalized_lossy();
+    let norm = hf.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x1004, 4).unwrap(),
         vec![0xAA; 4]
@@ -47,7 +47,7 @@ fn test_merge_range_then_offset_transparent() {
     )
     .unwrap();
 
-    let norm = base.normalized_lossy();
+    let norm = base.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x1011, 2).unwrap(),
         vec![0xEE, 0xEE]
@@ -71,7 +71,7 @@ fn test_merge_range_then_offset_opaque() {
     )
     .unwrap();
 
-    let norm = base.normalized_lossy();
+    let norm = base.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x1011, 2).unwrap(),
         vec![0x11, 0x12]
@@ -124,7 +124,7 @@ fn test_hexview_multistage_order() {
     };
     hf.checksum(&cs_options, &ChecksumTarget::Append).unwrap();
 
-    let norm = hf.normalized_lossy();
+    let norm = hf.normalized();
     assert_eq!(norm.segments()[0].start_address, 0x0FFF);
     assert_eq!(
         norm.read_bytes_contiguous(0x0FFF, 6).unwrap(),

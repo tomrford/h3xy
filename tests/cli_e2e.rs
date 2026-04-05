@@ -30,7 +30,7 @@ fn test_cli_multistage_bin_merge_align_output() {
 
     let data = std::fs::read(&out).unwrap();
     let hexfile = parse_intel_hex(&data).unwrap();
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
 
     assert_eq!(norm.segments().len(), 1);
     assert_eq!(norm.segments()[0].start_address, 0x0FFF);

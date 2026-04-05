@@ -1,5 +1,5 @@
 use super::OpsError;
-use crate::{AddressRange, HexFile, Segment};
+use crate::{AddressRange, HexFile, Segment, merge_ranges};
 
 /// Options for fill operations.
 #[derive(Debug, Clone)]
@@ -98,7 +98,7 @@ impl HexFile {
         for range in ranges {
             let mut new_segments = Vec::new();
 
-            for segment in self.segments_mut().drain(..) {
+            for segment in self.take_segments() {
                 if segment.is_empty() {
                     continue;
                 }
@@ -233,7 +233,7 @@ impl HexFile {
     /// Result: single contiguous segment (normalizes with last-wins).
     /// Returns silently if the span is too large (>= 4GiB).
     pub fn fill_gaps(&mut self, fill_byte: u8) {
-        let normalized = self.normalized_lossy();
+        let normalized = self.normalized();
         let Some(min_addr) = normalized.min_address() else {
             return;
         };
@@ -339,25 +339,6 @@ impl HexFile {
     }
 }
 
-fn merge_ranges(ranges: &[AddressRange]) -> Vec<AddressRange> {
-    let mut sorted = ranges.to_vec();
-    sorted.sort_by_key(|r| r.start());
-
-    let mut merged: Vec<AddressRange> = Vec::new();
-    for range in sorted {
-        if let Some(last) = merged.last_mut()
-            && range.start() <= last.end().saturating_add(1)
-        {
-            let new_end = last.end().max(range.end());
-            if let Ok(merged_range) = AddressRange::from_start_end(last.start(), new_end) {
-                *last = merged_range;
-                continue;
-            }
-        }
-        merged.push(range);
-    }
-    merged
-}
 
 #[cfg(test)]
 mod tests {
@@ -409,7 +390,7 @@ mod tests {
         let mut hf = HexFile::with_segments(vec![Segment::new(0x1000, vec![0x01; 0x100])]);
         hf.cut(AddressRange::from_start_end(0x1040, 0x107F).unwrap());
 
-        let norm = hf.normalized().unwrap();
+        let norm = hf.normalized();
         assert_eq!(norm.segments().len(), 2);
         assert_eq!(norm.segments()[0].start_address, 0x1000);
         assert_eq!(norm.segments()[0].end_address(), 0x103F);
@@ -504,7 +485,7 @@ mod tests {
         let hf2 = HexFile::with_segments(vec![Segment::new(0x1001, vec![0xFF])]);
 
         hf1.merge(&hf2, &MergeOptions::default()).unwrap();
-        let norm = hf1.normalized_lossy();
+        let norm = hf1.normalized();
 
         assert_eq!(norm.segments()[0].data, vec![0xAA, 0xFF]);
     }
@@ -522,7 +503,7 @@ mod tests {
             },
         )
         .unwrap();
-        let norm = hf1.normalized_lossy();
+        let norm = hf1.normalized();
 
         assert_eq!(norm.segments()[0].data, vec![0xAA, 0xBB]);
     }
@@ -540,7 +521,7 @@ mod tests {
             },
         )
         .unwrap();
-        let norm = hf1.normalized_lossy();
+        let norm = hf1.normalized();
 
         assert_eq!(norm.segments().len(), 2);
         assert_eq!(norm.segments()[1].start_address, 0x2000);
@@ -572,7 +553,7 @@ mod tests {
             AddressRange::from_start_end(0x1005, 0x1015).unwrap(),
             AddressRange::from_start_end(0x1010, 0x101A).unwrap(), // overlaps
         ]);
-        let norm = hf.normalized().unwrap();
+        let norm = hf.normalized();
         // Should have data from 0x1005 to 0x101A (0x16 bytes)
         assert_eq!(norm.min_address(), Some(0x1005));
         assert_eq!(norm.max_address(), Some(0x101A));
@@ -602,7 +583,7 @@ mod tests {
             AddressRange::from_start_end(0x1004, 0x1007).unwrap(),
             AddressRange::from_start_end(0x1010, 0x1013).unwrap(),
         ]);
-        let norm = hf.normalized().unwrap();
+        let norm = hf.normalized();
         assert_eq!(norm.segments().len(), 3);
     }
 
@@ -613,7 +594,7 @@ mod tests {
             Segment::new(0x1020, vec![0x02; 0x10]),
         ]);
         hf.cut(AddressRange::from_start_end(0x1008, 0x1027).unwrap());
-        let norm = hf.normalized().unwrap();
+        let norm = hf.normalized();
         assert_eq!(norm.segments().len(), 2);
         assert_eq!(norm.segments()[0].end_address(), 0x1007);
         assert_eq!(norm.segments()[1].start_address, 0x1028);
@@ -629,7 +610,7 @@ mod tests {
                 overwrite: true,
             },
         );
-        let norm = hf.normalized_lossy();
+        let norm = hf.normalized();
         assert_eq!(
             norm.segments()[0].data,
             vec![0xAA, 0xAA, 0xFF, 0xFF, 0xFF, 0xFF, 0xAA, 0xAA]
@@ -645,7 +626,7 @@ mod tests {
         hf.fill_gaps(0x00);
         let seg = &hf.segments()[0];
         assert_eq!(seg.start_address, 0x1000);
-        // normalized_lossy: last wins, so 0x1001 = 0xFF
+        // normalized: last wins, so 0x1001 = 0xFF
         assert_eq!(seg.data, vec![0xAA, 0xFF, 0xCC]);
     }
 
@@ -670,7 +651,7 @@ mod tests {
             },
         )
         .unwrap();
-        let norm = hf1.normalized_lossy();
+        let norm = hf1.normalized();
         assert_eq!(norm.segments().len(), 2);
         assert_eq!(norm.segments()[1].start_address, 0x2000);
     }
@@ -710,7 +691,7 @@ mod tests {
         )
         .unwrap();
 
-        let norm = base.normalized_lossy();
+        let norm = base.normalized();
         assert_eq!(norm.segments().len(), 1);
         assert_eq!(norm.segments()[0].start_address, 0x2000);
         assert_eq!(norm.segments()[0].len(), 2);

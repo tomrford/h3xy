@@ -2,17 +2,7 @@
 
 Post-API-simplification active issues.
 
-The big surface cleanup is done:
-- no public `h3xy::cli`
-- no public pipeline/flag layer
-- no in-memory CLI execution path
-- public core model is `HexFile`, `Segment`, `AddressRange`
-
-Recently fixed:
-- fixed-address checksum targets now reject overflow before calculation/write
-- `offset_addresses` and `scale_addresses` now validate full segment spans
-- `/II2` now participates in default output and INI path resolution
-- singular checksum and dsPIC range parsers now reject multi-range input
+Public core model is `HexFile`, `Segment`, `AddressRange`. No public CLI layer, no pipeline/flag surface, no in-memory CLI execution path.
 
 ## Verify On Reference Machine
 
@@ -68,13 +58,17 @@ Needs a decision:
 - reject same-invocation placed `/DP` + `/SV`
 - or define and implement exclusion rules for the placed signature range
 
-### `normalized_lossy()` performance / cloning
+### `normalized()` performance
 
 [`src/hexfile.rs`](/Users/tomford/code/projects/h3xy/src/hexfile.rs)
 
-Overlap-heavy normalization is still quadratic and clone-heavy. It sits under checksum collection, alignment, gap filling, contiguous reads, and some writers.
+Two separate costs:
 
-Needs a design pass, not a local patch.
+1. **Redundant normalization** — a single CLI run may normalize multiple times (align, checksum, output) even when nothing changed between calls. A dirty-flag on `HexFile` (cleared on mutation, checked in `normalized()`) would skip re-work when the file is already flat.
+
+2. **Quadratic overlap resolution** — when overlaps exist, `overlay_segment()` walks all existing segments per new segment (O(n²) in segment count, each step clones). Only fires when `has_overlap` is true; the common fast path (sort + merge adjacent) is O(n log n). Fixing this properly requires an interval-tree or byte-level merge buffer.
+
+Likely not a problem for real firmware hex files (<100 non-overlapping segments). Revisit if profiling shows otherwise.
 
 ### Full-span materialization in sparse images
 
@@ -96,6 +90,29 @@ Needs:
 Forced-range checksum still constructs a whole pattern-backed segment before exclusions are applied.
 
 Needs a more careful checksum-collection refactor.
+
+### Move signature ops into library
+
+[`src/bin/h3xy/args/signature.rs`](/Users/tomford/code/projects/h3xy/src/bin/h3xy/args/signature.rs)
+
+Signing/verification logic (RSA PKCS#1/PSS, Ed25519, X.509 cert loading) currently lives in the CLI layer. The library should offer the same in-memory semantics as every other HexView operation so consumers can reproduce `/DP` and `/SV` behavior without the CLI.
+
+Migration requires:
+- library-level signature types (method enum, target enum, key source) decoupled from CLI `CliError`/`DataProcessingParams`/`SignatureVerifyParams`
+- CLI layer translates its parsed args into the library types
+- crypto deps (`ed25519-dalek`, `rsa`, `x509-cert`, `sha2`) move behind a cargo feature gate so non-signing consumers don't pay for them
+
+### CLI architecture: clap + HexView compat mode
+
+The CLI is entirely hand-rolled to match HexView's `/`-prefix syntax. This is correct for drop-in compat, but means no `--help`, no shell completions, no discoverable native args.
+
+Future direction under consideration: `h3xy --hexview "/AR:'...' /CS1:@append" input.hex -o output.hex` — clap manages the outer shell (input, output, `--hexview`, `--help`, `--version`, future native flags), the existing hand-rolled parser handles the HexView string verbatim.
+
+Open questions:
+- should bare `/`-flags continue to work without `--hexview` for backward compat, or require the explicit mode switch?
+- what native features (if any) warrant clap args beyond `--hexview`?
+
+Deferred until more real-world usage clarifies the need.
 
 ## API Ergonomics
 

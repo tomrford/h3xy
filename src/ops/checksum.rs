@@ -29,7 +29,7 @@ use ripemd::Ripemd160;
 use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha512};
 
-use crate::{AddressRange, HexFile, OpsError, Segment};
+use crate::{AddressRange, HexFile, OpsError, Segment, merge_ranges};
 
 /// Target for checksum output.
 #[derive(Debug, Clone)]
@@ -383,7 +383,7 @@ impl HexFile {
     /// Collect contiguous data for checksum calculation.
     /// If a range is specified, only include data in that range.
     fn collect_data_for_checksum(&self, options: &ChecksumOptions) -> Result<Vec<u8>, OpsError> {
-        let normalized = self.normalized_lossy();
+        let normalized = self.normalized();
         let needs_word_alignment = matches!(
             options.algorithm,
             ChecksumAlgorithm::WordSumBe
@@ -399,7 +399,7 @@ impl HexFile {
             for segment in normalized.segments() {
                 combined.append_segment(segment.clone());
             }
-            combined.normalized_lossy()
+            combined.normalized()
         } else {
             normalized
         };
@@ -414,7 +414,7 @@ impl HexFile {
         if let Some(target) = options.target_exclude {
             excludes.push(target);
         }
-        let excludes = merge_ranges(excludes);
+        let excludes = merge_ranges(&excludes);
         let include_ranges = subtract_ranges(range, &excludes);
         if include_ranges.is_empty() {
             return Ok(Vec::new());
@@ -628,26 +628,6 @@ fn build_pattern_data(range: AddressRange, pattern: &[u8]) -> Result<Vec<u8>, Op
     Ok(data)
 }
 
-fn merge_ranges(mut ranges: Vec<AddressRange>) -> Vec<AddressRange> {
-    ranges.sort_by_key(|r| r.start());
-    let mut merged: Vec<AddressRange> = Vec::new();
-    for r in ranges {
-        if let Some(last) = merged.last_mut() {
-            let last_end = last.end();
-            let extend = last_end
-                .checked_add(1)
-                .map(|v| r.start() <= v)
-                .unwrap_or(false);
-            if r.start() <= last_end || extend {
-                let end = last_end.max(r.end());
-                *last = AddressRange::from_start_end(last.start(), end).expect("range merge");
-                continue;
-            }
-        }
-        merged.push(r);
-    }
-    merged
-}
 
 fn subtract_ranges(range: AddressRange, excludes: &[AddressRange]) -> Vec<AddressRange> {
     if excludes.is_empty() {
@@ -933,7 +913,7 @@ mod tests {
         };
         hf.checksum(&options, &ChecksumTarget::Append).unwrap();
 
-        let norm = hf.normalized_lossy();
+        let norm = hf.normalized();
         assert_eq!(norm.max_address(), Some(0x1003));
     }
 
@@ -1006,7 +986,7 @@ mod tests {
         hf.checksum(&options, &ChecksumTarget::OverwriteEnd)
             .unwrap();
 
-        let norm = hf.normalized_lossy();
+        let norm = hf.normalized();
         assert_eq!(norm.segments().len(), 1);
         assert_eq!(norm.min_address(), Some(0x1000));
         assert_eq!(norm.max_address(), Some(0x1003)); // Same end address
@@ -1028,7 +1008,7 @@ mod tests {
         hf.checksum(&options, &ChecksumTarget::OverwriteEnd)
             .unwrap();
 
-        let norm = hf.normalized_lossy();
+        let norm = hf.normalized();
         assert_eq!(norm.min_address(), Some(0x1000));
         assert_eq!(norm.max_address(), Some(0x1007)); // Same end address
         // First 4 bytes unchanged
@@ -1241,7 +1221,7 @@ mod tests {
         ];
         let results = hf.checksum_many_sequential(&jobs).unwrap();
         assert_eq!(results, vec![vec![0x00, 0x07], vec![0x00, 0x0E]]);
-        let norm = hf.normalized_lossy();
+        let norm = hf.normalized();
         assert_eq!(
             norm.read_bytes_contiguous(0x1000, 6).unwrap(),
             vec![0x00, 0x07, 0x03, 0x04, 0x00, 0x0E]
