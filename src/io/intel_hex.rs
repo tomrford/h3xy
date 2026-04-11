@@ -29,8 +29,7 @@ impl Default for IntelHexWriteOptions {
     }
 }
 
-/// Parse Intel-HEX input. CLI: auto-detect Intel-HEX input.
-pub fn parse_intel_hex(input: &[u8]) -> Result<HexFile, ParseError> {
+fn parse_intel_hex_with_address_scale(input: &[u8], address_scale: u32) -> Result<HexFile, ParseError> {
     let text = std::str::from_utf8(input).map_err(|e| ParseError::InvalidRecord {
         line: 1,
         message: format!("invalid UTF-8: {e}"),
@@ -106,6 +105,8 @@ pub fn parse_intel_hex(input: &[u8]) -> Result<HexFile, ParseError> {
             RECORD_DATA => {
                 let full_address = extended_address
                     .checked_add(address as u32)
+                    .ok_or_else(|| ParseError::AddressOverflow(format!("line {line_num}")))?
+                    .checked_mul(address_scale)
                     .ok_or_else(|| ParseError::AddressOverflow(format!("line {line_num}")))?;
 
                 if byte_count > 0 {
@@ -179,27 +180,14 @@ pub fn parse_intel_hex(input: &[u8]) -> Result<HexFile, ParseError> {
     Ok(HexFile::with_segments(segments))
 }
 
+/// Parse Intel-HEX input. CLI: auto-detect Intel-HEX input.
+pub fn parse_intel_hex(input: &[u8]) -> Result<HexFile, ParseError> {
+    parse_intel_hex_with_address_scale(input, 1)
+}
+
 /// Parse Intel-HEX with 16-bit addressing (address * 2). CLI: /II2.
 pub fn parse_intel_hex_16bit(input: &[u8]) -> Result<HexFile, ParseError> {
-    let hexfile = parse_intel_hex(input)?;
-    let mut segments = Vec::with_capacity(hexfile.segments().len());
-
-    for seg in hexfile.segments() {
-        let start = seg
-            .start_address
-            .checked_mul(2)
-            .ok_or_else(|| ParseError::AddressOverflow("16-bit address overflow".to_string()))?;
-        if !seg.data.is_empty() {
-            start
-                .checked_add(seg.data.len() as u32 - 1)
-                .ok_or_else(|| {
-                    ParseError::AddressOverflow("16-bit address overflow".to_string())
-                })?;
-        }
-        segments.push(Segment::new(start, seg.data.clone()));
-    }
-
-    Ok(HexFile::with_segments(segments))
+    parse_intel_hex_with_address_scale(input, 2)
 }
 
 /// Write Intel-HEX output. CLI: /XI.
@@ -393,6 +381,26 @@ mod tests {
         assert_eq!(hf.segments().len(), 1);
         assert_eq!(hf.segments()[0].start_address, 0x0002);
         assert_eq!(hf.segments()[0].data, vec![0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn test_parse_16bit_scales_before_merging_adjacent_records() {
+        let input = b":04D0C00082B77EF8BD\n\
+                      :20D0C40080D874F080DC774080C874E080C674D080C474C000007E2080CA74C000F47AC095\n\
+                      :00000001FF\n";
+        let hf = parse_intel_hex_16bit(input).unwrap();
+        assert_eq!(hf.segments().len(), 2);
+        assert_eq!(hf.segments()[0].start_address, 0x1A180);
+        assert_eq!(hf.segments()[0].data, vec![0x82, 0xB7, 0x7E, 0xF8]);
+        assert_eq!(hf.segments()[1].start_address, 0x1A188);
+        assert_eq!(
+            hf.segments()[1].data,
+            vec![
+                0x80, 0xD8, 0x74, 0xF0, 0x80, 0xDC, 0x77, 0x40, 0x80, 0xC8, 0x74, 0xE0,
+                0x80, 0xC6, 0x74, 0xD0, 0x80, 0xC4, 0x74, 0xC0, 0x00, 0x00, 0x7E, 0x20,
+                0x80, 0xCA, 0x74, 0xC0, 0x00, 0xF4, 0x7A, 0xC0,
+            ]
+        );
     }
 
     #[test]

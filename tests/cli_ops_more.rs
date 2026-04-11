@@ -237,6 +237,28 @@ fn test_cli_import_i16_scales_addresses() {
 }
 
 #[test]
+fn test_cli_merge_opaque_without_input_starts_empty() {
+    let dir = temp_dir("cli_merge_no_input");
+    let merge = dir.join("merge.hex");
+    let out = dir.join("out.hex");
+    let hex = b":02000100AABB98\n:00000001FF\n";
+    write_file(&merge, hex);
+
+    let args = vec![
+        format!("/MO:{};0x1000", merge.display()),
+        "/XI".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+
+    let hexfile = run_hex_output(args, &out);
+    let norm = hexfile.normalized();
+    assert_eq!(norm.segments().len(), 1);
+    assert_eq!(norm.segments()[0].start_address, 0x1001);
+    assert_eq!(norm.segments()[0].data, vec![0xAA, 0xBB]);
+}
+
+#[test]
 fn test_cli_s08map_examples() {
     let dir = temp_dir("cli_s08map");
     let input = dir.join("input.hex");

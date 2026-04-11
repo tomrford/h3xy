@@ -254,7 +254,10 @@ impl Args {
         if let Some(ref path) = self.input_file {
             return load_input(provider, path);
         }
-        if self.log_file.is_some() {
+        if self.log_file.is_some()
+            || !self.merge_transparent.is_empty()
+            || !self.merge_opaque.is_empty()
+        {
             return Ok(crate::HexFile::new());
         }
         Err(ParseArgError::MissingInputFile.into())
