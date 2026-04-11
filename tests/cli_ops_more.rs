@@ -105,6 +105,28 @@ fn test_cli_mt_mo_conflict() {
 }
 
 #[test]
+fn test_cli_remap_s08map_conflict() {
+    let dir = temp_dir("cli_remap_s08");
+    let input = dir.join("input.bin");
+    let out = dir.join("out.hex");
+    write_file(&input, &[0xAA; 4]);
+
+    let args = vec![
+        format!("/IN:{};0x0", input.display()),
+        "/REMAP:0x0-0xFF,0x1000,0x100,0x100".to_string(),
+        "/S08MAP".to_string(),
+        "/XI".to_string(),
+        "-o".to_string(),
+        out.display().to_string(),
+    ];
+
+    let output = run_h3xy(&args);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("S08MAP"), "error should mention S08MAP: {stderr}");
+}
+
+#[test]
 fn test_cli_log_file_open_without_input() {
     let dir = temp_dir("cli_log_open");
     let input = dir.join("input.bin");

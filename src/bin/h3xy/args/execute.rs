@@ -42,7 +42,7 @@ impl Args {
         }
         if self.remap.is_some() && (self.s12_map || self.s12x_map || self.s08_map) {
             return Err(CliError::Unsupported(
-                "cannot combine /REMAP with /S12MAP or /S12XMAP".into(),
+                "cannot combine /REMAP with /S08MAP, /S12MAP, or /S12XMAP".into(),
             ));
         }
         if self.postbuild.is_some() {
