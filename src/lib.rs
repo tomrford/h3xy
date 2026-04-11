@@ -19,5 +19,7 @@ pub use ops::{
     ChecksumTarget, FillOptions, ForcedRange, MergeMode, MergeOptions, OpsError, RemapOptions,
     SwapMode,
 };
-pub use range::{AddressRange, AddressRangeError, merge_ranges, parse_hexview_ranges, parse_ranges};
+pub use range::{
+    AddressRange, AddressRangeError, merge_ranges, parse_hexview_ranges, parse_ranges,
+};
 pub use segment::Segment;

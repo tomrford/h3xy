@@ -334,7 +334,6 @@ fn write_record(output: &mut Vec<u8>, record_type: u8, address: u16, data: &[u8]
     push_crlf(output);
 }
 
-
 fn validate_checksum(bytes: &[u8], line_num: usize) -> Result<(), ParseError> {
     let sum: u8 = bytes.iter().fold(0u8, |acc, &b| acc.wrapping_add(b));
     if sum != 0 {

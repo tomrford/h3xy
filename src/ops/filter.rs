@@ -339,7 +339,6 @@ impl HexFile {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

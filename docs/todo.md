@@ -70,6 +70,23 @@ Two separate costs:
 
 Likely not a problem for real firmware hex files (<100 non-overlapping segments). Revisit if profiling shows otherwise.
 
+### Full-span `AddressRange` support
+
+[`src/range.rs`](/Users/tomford/code/projects/h3xy/src/range.rs)
+[`src/ops/filter.rs`](/Users/tomford/code/projects/h3xy/src/ops/filter.rs)
+[`src/ops/checksum.rs`](/Users/tomford/code/projects/h3xy/src/ops/checksum.rs)
+[`src/ops/transform.rs`](/Users/tomford/code/projects/h3xy/src/ops/transform.rs)
+[`src/bin/h3xy/args/execute.rs`](/Users/tomford/code/projects/h3xy/src/bin/h3xy/args/execute.rs)
+
+`AddressRange` currently rejects `0x00000000..=0xFFFFFFFF` because the type contract assumes `length() -> u32`. That keeps range math simple, but leaks into edge cases like `merge_ranges()`, where two adjacent valid ranges cannot be coalesced into the full span.
+
+Follow-up redesign if/when this matters:
+- decide whether the public contract should support the full span explicitly
+- if yes, widen range length semantics (`u64`, `Option<u32>`, or a half-open representation)
+- audit all materialization/allocation call sites that currently cast `range.length()` to `usize`
+
+Do not treat this as just a constructor tweak; it is a small API redesign plus an allocation-behavior audit.
+
 ### Full-span materialization in sparse images
 
 [`src/ops/filter.rs`](/Users/tomford/code/projects/h3xy/src/ops/filter.rs)

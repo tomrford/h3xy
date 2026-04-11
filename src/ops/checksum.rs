@@ -628,7 +628,6 @@ fn build_pattern_data(range: AddressRange, pattern: &[u8]) -> Result<Vec<u8>, Op
     Ok(data)
 }
 
-
 fn subtract_ranges(range: AddressRange, excludes: &[AddressRange]) -> Vec<AddressRange> {
     if excludes.is_empty() {
         return vec![range];

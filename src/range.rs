@@ -137,7 +137,11 @@ impl FromStr for AddressRange {
     }
 }
 
-/// Merge overlapping or adjacent ranges into a minimal sorted set.
+/// Merge overlapping or adjacent ranges into a sorted, non-overlapping set.
+///
+/// Adjacent ranges are coalesced when the merged range remains representable as
+/// [`AddressRange`]. If coalescing would produce the full 4GiB span, the
+/// boundary is preserved as two ranges because `AddressRange` rejects that span.
 pub fn merge_ranges(ranges: &[AddressRange]) -> Vec<AddressRange> {
     let mut sorted = ranges.to_vec();
     sorted.sort_by_key(|r| r.start());
@@ -331,6 +335,17 @@ mod tests {
         // 1 to MAX is allowed (length = MAX)
         let r = AddressRange::from_start_end(1, u32::MAX).unwrap();
         assert_eq!(r.length(), u32::MAX);
+    }
+
+    #[test]
+    fn test_merge_ranges_preserves_full_span_boundary() {
+        let ranges = [
+            AddressRange::from_start_end(0, 0x7FFF_FFFF).unwrap(),
+            AddressRange::from_start_end(0x8000_0000, u32::MAX).unwrap(),
+        ];
+
+        let merged = merge_ranges(&ranges);
+        assert_eq!(merged, ranges);
     }
 
     #[test]
