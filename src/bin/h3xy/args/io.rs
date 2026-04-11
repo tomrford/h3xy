@@ -502,7 +502,9 @@ fn build_ford_header(
 }
 
 fn normalize_crlf(text: &str) -> String {
-    text.replace("\r\n", "\n").replace('\r', "\n").replace('\n', "\r\n")
+    text.replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .replace('\n', "\r\n")
 }
 
 fn compute_ford_checksum(hexfile: &HexFile) -> u16 {

@@ -123,7 +123,10 @@ fn test_cli_remap_s08map_conflict() {
     let output = run_h3xy(&args);
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("S08MAP"), "error should mention S08MAP: {stderr}");
+    assert!(
+        stderr.contains("S08MAP"),
+        "error should mention S08MAP: {stderr}"
+    );
 }
 
 #[test]
