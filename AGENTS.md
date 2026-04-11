@@ -132,6 +132,10 @@ cargo run -- [args]   # Run CLI
 - HEX-ASCII import overlap now warns (stderr) and ignores input file, per manual; we still allow /IA + input when non-overlapping (assumption).
 - `/CSx` or `/CSRx` without `:target` now defaults to `@append` (manual parity); empty target (`/CSx:`) also maps to append.
 - Checksum method 19 assumption: SHA-512 input is `start_address (u32 BE) + data_length (u32 BE) + data_bytes`; `/CSR` reverses output bytes.
+- `HexFileError` removed; strict `normalized()` dropped in favor of sole `normalized()` with last-wins semantics. No overlap-error path exists.
+- `segments_mut()` now returns `&mut [Segment]` (not `&mut Vec<Segment>`); callers needing ownership use `take_segments()`.
+- `merge_ranges()` extracted to `range.rs` as public utility; duplicate copies in filter.rs/checksum.rs removed.
+- `parse_hex_bytes()` and `hex_digit()` extracted to `io/mod.rs`; duplicate copies in intel_hex.rs/srec.rs removed.
 
 ### TODOs (current)
 - Review segment overflow policy (saturating `end_address` vs strict error) once validation suite runs.

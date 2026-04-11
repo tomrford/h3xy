@@ -50,7 +50,7 @@ fn test_cli_merge_transparent_range_offset() {
     ];
 
     let hexfile = run_hex_output(args, &out);
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x4000, 4).unwrap(),
         vec![0x40, 0x41, 0x42, 0x43]
@@ -75,7 +75,7 @@ fn test_cli_merge_opaque_range_offset() {
     ];
 
     let hexfile = run_hex_output(args, &out);
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x4000, 4).unwrap(),
         vec![0xA0, 0xA1, 0xA2, 0xA3]
@@ -121,7 +121,7 @@ fn test_cli_log_file_open_without_input() {
     ];
 
     let hexfile = run_hex_output(args, &out);
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(norm.segments().len(), 1);
     assert_eq!(norm.segments()[0].start_address, 0x0);
     assert_eq!(norm.segments()[0].data, vec![0xDE, 0xAD, 0xBE, 0xEF]);
@@ -208,7 +208,7 @@ fn test_cli_import_i16_scales_addresses() {
     ];
 
     let hexfile = run_hex_output(args, &out);
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(norm.segments().len(), 1);
     assert_eq!(norm.segments()[0].start_address, 0x0002);
     assert_eq!(norm.segments()[0].data, vec![0xAA, 0xBB]);

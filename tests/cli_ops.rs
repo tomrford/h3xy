@@ -22,7 +22,7 @@ fn test_cli_align_length_fill() {
     ];
 
     let hexfile = run_hex_output(args, &out);
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(norm.segments().len(), 1);
     assert_eq!(norm.segments()[0].start_address, 0x1000);
     assert_eq!(
@@ -60,8 +60,8 @@ fn test_cli_align_address_no_separator_semantics() {
     let hexfile_dec = run_hex_output(args_dec, &out_dec);
 
     assert_ne!(
-        hexfile_hex.normalized_lossy().segments()[0].data,
-        hexfile_dec.normalized_lossy().segments()[0].data
+        hexfile_hex.normalized().segments()[0].data,
+        hexfile_dec.normalized().segments()[0].data
     );
 }
 
@@ -82,7 +82,7 @@ fn test_cli_align_address_binary_separator() {
         out.display().to_string(),
     ];
     let hexfile = run_hex_output(args, &out);
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(norm.segments()[0].start_address, 0x1000);
     assert_eq!(
         norm.segments()[0].data,
@@ -108,7 +108,7 @@ fn test_cli_align_fill_separator_and_hex_forms() {
     ];
 
     let hexfile = run_hex_output(args, &out);
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(norm.segments()[0].start_address, 0x1000);
     assert_eq!(norm.segments()[0].data, vec![0xAA, 0x11, 0x22, 0x33]);
 }
@@ -144,8 +144,8 @@ fn test_cli_align_fill_no_separator_equivalence() {
     let hexfile_dec = run_hex_output(args_dec, &out_dec);
 
     assert_eq!(
-        hexfile_hex.normalized_lossy().segments()[0].data,
-        hexfile_dec.normalized_lossy().segments()[0].data
+        hexfile_hex.normalized().segments()[0].data,
+        hexfile_dec.normalized().segments()[0].data
     );
 }
 
@@ -180,8 +180,8 @@ fn test_cli_align_fill_equal_separator() {
     let hexfile_equal = run_hex_output(args_equal, &out_equal);
 
     assert_eq!(
-        hexfile_colon.normalized_lossy().segments()[0].data,
-        hexfile_equal.normalized_lossy().segments()[0].data
+        hexfile_colon.normalized().segments()[0].data,
+        hexfile_equal.normalized().segments()[0].data
     );
 }
 
@@ -227,7 +227,7 @@ fn test_cli_fill_region_pattern_preserves_data() {
     ];
 
     let hexfile = run_hex_output(args, &out);
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(
         norm.read_bytes_contiguous(0x3000, 4).unwrap(),
         vec![0xAA, 0x55, 0x11, 0x22]
@@ -250,7 +250,7 @@ fn test_cli_fill_region_without_pattern_random() {
     ];
 
     let hexfile = run_hex_output(args, &out);
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     let data = norm.read_bytes_contiguous(0x1000, 4).unwrap();
     assert_eq!(data[2], 0x11);
     assert_eq!(data[3], 0x22);
@@ -274,7 +274,7 @@ fn test_cli_threshold_options_noop() {
     ];
 
     let hexfile = run_hex_output(args, &out);
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(norm.segments().len(), 1);
 }
 
@@ -304,7 +304,7 @@ fn test_cli_nested_chain_checksum() {
     ];
 
     let hexfile = run_hex_output(args, &out);
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     let data = norm.read_bytes_contiguous(0x1000, 10).unwrap();
     assert_eq!(
         data,
@@ -373,7 +373,7 @@ fn test_cli_address_range_reduction() {
     ];
 
     let hexfile = run_hex_output(args, &out);
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(norm.segments().len(), 1);
     assert_eq!(norm.segments()[0].start_address, 0x2000);
     assert_eq!(norm.segments()[0].data, vec![0xBA, 0xBB, 0xBC, 0xBD]);
@@ -398,7 +398,7 @@ fn test_cli_address_range_reduction_start_end() {
     ];
 
     let hexfile = run_hex_output(args, &out);
-    let norm = hexfile.normalized_lossy();
+    let norm = hexfile.normalized();
     assert_eq!(norm.segments().len(), 1);
     assert_eq!(norm.segments()[0].start_address, 0x2000);
     assert_eq!(norm.segments()[0].data, vec![0xBA, 0xBB, 0xBC, 0xBD]);

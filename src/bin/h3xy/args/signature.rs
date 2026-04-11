@@ -154,7 +154,7 @@ pub(super) fn apply_signature_verification(
 }
 
 fn signature_payload(hexfile: &crate::HexFile, with_metadata: bool) -> Result<Vec<u8>, CliError> {
-    let normalized = hexfile.normalized_lossy();
+    let normalized = hexfile.normalized();
     let mut data = Vec::new();
     for seg in normalized.segments() {
         data.extend_from_slice(&seg.data);
