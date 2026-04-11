@@ -1,6 +1,6 @@
 # Known Divergences
 
-Current parity status against HexView for `v1.1.0` (`6f2ad0a`).
+Current parity status against HexView for `v1.1.1`.
 
 Validation environment lives outside the repo in `../h3xy-validation-local/`.
 

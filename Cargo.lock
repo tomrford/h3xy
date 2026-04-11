@@ -191,7 +191,7 @@ dependencies = [
 
 [[package]]
 name = "h3xy"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "crc",
  "ed25519-dalek",
