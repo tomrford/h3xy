@@ -337,10 +337,12 @@ pub(super) fn write_ford_ihex_output(
         mode: crate::IntelHexMode::Auto,
     };
     let data = crate::write_intel_hex(hexfile, &options);
+    let data = String::from_utf8(data)
+        .map_err(|e| CliError::Other(format!("invalid Intel HEX output: {e}")))?;
 
     let mut output = Vec::new();
-    output.extend_from_slice(header.as_bytes());
-    output.extend_from_slice(data.as_slice());
+    output.extend_from_slice(normalize_crlf(&header).as_bytes());
+    output.extend_from_slice(normalize_crlf(&data).as_bytes());
     std::fs::write(output_path, output)?;
     Ok(())
 }
@@ -489,15 +491,18 @@ fn build_ford_header(
         .unwrap_or_else(|| "0".to_string());
     lines.push(format!("FLASH INDICATOR>{flash_indicator}"));
 
-    lines.push("FLASH ERASE".to_string());
     let erase = ini
         .get("flash erase sectors")
         .cloned()
         .unwrap_or_else(|| format_erase_sectors(hexfile, args.align_erase));
-    lines.push(format!("SECTORS>{erase}"));
+    lines.push(format!("FLASH ERASE SECTORS>{erase}"));
 
     lines.push("$".to_string());
     Ok(lines.join("\n") + "\n")
+}
+
+fn normalize_crlf(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n").replace('\n', "\r\n")
 }
 
 fn compute_ford_checksum(hexfile: &HexFile) -> u16 {
@@ -644,6 +649,9 @@ mod tests {
         assert!(content.contains("FILE CHECKSUM>"));
         assert!(content.contains("$"));
         assert!(content.contains(":"));
+        assert!(content.contains("FLASH ERASE SECTORS>:0x1000,0x2"));
+        let bytes = fs::read(&output).unwrap();
+        assert!(bytes.windows(2).any(|w| w == b"\r\n"));
 
         let _ = fs::remove_dir_all(dir);
     }

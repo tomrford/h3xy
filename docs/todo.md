@@ -4,6 +4,8 @@ Post-API-simplification active issues.
 
 Public core model is `HexFile`, `Segment`, `AddressRange`. No public CLI layer, no pipeline/flag surface, no in-memory CLI execution path.
 
+Current parity gaps / validated divergences are tracked in [known-divergences.md](/home/tfo01/code/tools/h3xy/docs/known-divergences.md).
+
 ## Verify On Reference Machine
 
 These are contract questions, not just implementation bugs.
